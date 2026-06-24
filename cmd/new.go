@@ -71,7 +71,7 @@ func runNew(_ *cobra.Command, args []string) error {
 			drafter := func(c context.Context, transcript []ai.Message, prior *ai.SkillSpec, instruction string) (*ai.SkillSpec, error) {
 				return ai.DraftSkill(c, p, ai.DefaultModel(p), transcript, prior, instruction)
 			}
-			r, ok, err := forge.Converse(ctx, os.Stdin, os.Stdout, p, drafter, res, newOut)
+			r, ok, err := forge.Chat(ctx, p, drafter, res, newOut)
 			switch {
 			case errors.Is(err, forge.ErrDegrade):
 				r2, ferr := tui.RunWizard(res)

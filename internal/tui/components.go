@@ -6,8 +6,37 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mrdulasolutions/skillforge/internal/skill"
 )
+
+// TitledBox renders body inside a rounded box whose top border embeds the
+// title — e.g. ╭─ Skill Forge ─────╮ — the Claude Code header look. width is
+// the total outer width.
+func TitledBox(title, body string, width int) string {
+	if width < 16 {
+		width = 16
+	}
+	border := lipgloss.NewStyle().Foreground(ColPrimary)
+	innerW := width - 4
+	fill := width - lipgloss.Width(title) - 5
+	if fill < 0 {
+		fill = 0
+	}
+	var b strings.Builder
+	b.WriteString(border.Render("╭─ ") + Title.Render(title) + border.Render(" "+strings.Repeat("─", fill)+"╮"))
+	b.WriteByte('\n')
+	for _, line := range strings.Split(body, "\n") {
+		pad := innerW - lipgloss.Width(line)
+		if pad < 0 {
+			pad = 0
+		}
+		b.WriteString(border.Render("│ ") + line + strings.Repeat(" ", pad) + border.Render(" │"))
+		b.WriteByte('\n')
+	}
+	b.WriteString(border.Render("╰" + strings.Repeat("─", width-2) + "╯"))
+	return b.String()
+}
 
 // Status lines ---------------------------------------------------------------
 
