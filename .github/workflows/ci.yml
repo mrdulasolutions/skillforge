@@ -44,6 +44,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: install reference-script deps
+        run: python3 -m pip install pyyaml
       - name: build skillforge
         run: go build -o /tmp/skillforge .
       - name: scaffold + validate + package a demo skill
