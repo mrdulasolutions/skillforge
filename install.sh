@@ -181,7 +181,7 @@ main() {
 
   ensure_path
   printf '\n'
-  ok "Skill Forge is ready. Try: ${BOLD}${BIN} new my-skill${RESET}"
+  ok "Skill Forge is ready. Try: ${BOLD}${BIN}${RESET} or ${BOLD}${BIN} help${RESET} for commands"
   printf '\n'
 }
 
