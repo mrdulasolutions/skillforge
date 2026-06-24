@@ -27,11 +27,14 @@ make build && make install
 
 ```sh
 skillforge setup                      # configure AI (stores key, verifies it works)
-skillforge new                        # describe your skill in plain words; AI drafts it
-skillforge build pdf-extractor        # validate + best-practice warnings
-skillforge build pdf-extractor --optimize --fix   # AI-improve the description
+skillforge new                        # describe your skill in plain words; AI drafts it (chat UI)
+skillforge compile ./docs ./notes.md  # synthesize a skill from your files, then refine
+skillforge build pdf-extractor        # validate (+ --optimize --fix to AI-improve)
+skillforge eval pdf-extractor --baseline   # benchmark with-vs-without across providers
 skillforge package pdf-extractor      # bundle → pdf-extractor.skill
-skillforge doctor                     # check providers & environment
+skillforge publish pdf-extractor      # .skill + manifest + share instructions
+skillforge serve-mcp pdf-extractor    # expose skills as MCP tools over stdio
+skillforge schema pdf-extractor       # emit MCP / OpenAI / Anthropic tool schemas
 ```
 
 ## Commands
@@ -39,9 +42,15 @@ skillforge doctor                     # check providers & environment
 | Command | What it does |
 |---|---|
 | `setup` | Configure an AI provider (OpenRouter or Ollama), store the key securely, and verify it with a live test call. |
-| `new [name]` | Build a skill conversationally — describe it in plain words and AI drafts the name, description, and SKILL.md, which you refine by chatting. Auto-derives the kebab-case name (never type it). Falls back to a quick form with no AI; `-y` for non-interactive; `--type plugin`, `--compliance`. |
+| `new [name]` | Build a skill conversationally — a full-screen chat UI where you describe it and AI drafts the name, description, and SKILL.md, which you refine by chatting. Auto-derives the kebab-case name. Falls back to a form with no AI; `-y` non-interactive; `--type plugin`, `--compliance`. |
+| `compile <path...>` | Read your files/folders and synthesize a skill with AI, then refine it in the chat UI (`-y` to write directly). |
 | `build [path]` | Validate `SKILL.md` (frontmatter rules + warnings). `--optimize` refines the description via AI; `--fix` applies it; `--json` for CI. |
+| `eval` / `test` `<path>` | Benchmark a skill's evals across your provider, AI-judging each expectation. `--baseline` measures lift; `--html` writes a report. |
 | `package [path]` | Validate, then zip into a `.skill` (excludes `evals/` and build artifacts). |
+| `publish [path]` | Package + sha256 + JSON manifest + how others install it. |
+| `import <file\|url>` | Install a skill from a `.skill` file or URL (zip-slip-safe). |
+| `serve-mcp [path...]` | Run an MCP server exposing skills as tools over stdio (`--execute` runs them via your provider). |
+| `schema <path>` | Emit cross-provider tool schemas (MCP, OpenAI, Anthropic) for a skill. |
 | `doctor` | Report version, AI provider availability, and config writability. |
 
 ## AI providers
@@ -65,16 +74,19 @@ If neither is configured, AI steps degrade gracefully — every other command wo
 
 `package` verifies the audit chain and records a provenance entry.
 
+## Cross-provider output
+
+From one skill, Skill Forge emits the same tool three ways — `skillforge schema` writes the MCP, OpenAI function-calling, and Anthropic tool definitions, and `skillforge serve-mcp` serves your skills as live MCP tools over stdio. One definition, every provider.
+
 ## Format parity
 
 Skill Forge mirrors the official `skill-creator` validation and packaging rules exactly, so anything it generates passes the reference `quick_validate.py` and loads cleanly into Claude.
 
 ## Roadmap
 
-- `eval` / `test` across providers (benchmark parity with skill-creator)
-- `serve-mcp` — expose skills as MCP tools + emit OpenAI fallback schemas
-- `compile` — synthesize a skill from local files and connectors (Box)
-- `publish` / `import`
+- `compile` connectors beyond local files (Box, Drive)
+- a skill registry for `publish`/`import` discovery
+- richer plugin/marketplace packaging
 
 ## License
 

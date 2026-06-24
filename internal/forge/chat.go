@@ -108,7 +108,6 @@ type model struct {
 
 	result  *tui.WizardResult
 	degrade bool
-	err     error
 }
 
 func newModel(ctx context.Context, p ai.Provider, draft Drafter, seed tui.WizardResult, parent string) model {
@@ -282,7 +281,7 @@ func (m model) failOrCancel(err error) (tea.Model, tea.Cmd) {
 		m.seed.Description = c
 	}
 	m.degrade = true
-	m.err = err
+	_ = err // surfaced to the caller as ErrDegrade
 	return m, tea.Quit
 }
 
