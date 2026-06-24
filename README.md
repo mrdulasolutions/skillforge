@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/mrdulasolutions/skillforge/main/ins
 
 The installer detects your OS/arch, downloads the matching static binary, verifies its checksum, and puts `skillforge` on your `PATH`. No runtime dependencies. Override the install dir with `SKILLFORGE_BIN_DIR`, pin a version with `SKILLFORGE_VERSION`, or add a short alias with `SKILLFORGE_ALIAS=forge`.
 
-Or build from source (Go 1.23+):
+Or build from source (Go 1.25+):
 
 ```sh
 make build && make install
