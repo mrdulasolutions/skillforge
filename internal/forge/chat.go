@@ -569,11 +569,30 @@ func truncateStr(s string, max int) string {
 	return string(r[:max-1]) + "…"
 }
 
-// Chat runs the full-screen conversational TUI and returns the result for
-// cmd/new.go: (result, ok, err). ok=false with a nil error means the user
-// cancelled; ErrDegrade means fall back to the offline form.
+// Chat runs the full-screen conversational TUI starting from the interview and
+// returns the result for cmd/new.go: (result, ok, err). ok=false with a nil
+// error means the user cancelled; ErrDegrade means fall back to the offline form.
 func Chat(ctx context.Context, p ai.Provider, draft Drafter, seed tui.WizardResult, parent string) (tui.WizardResult, bool, error) {
-	prog := tea.NewProgram(newModel(ctx, p, draft, seed, parent), tea.WithAltScreen(), tea.WithContext(ctx))
+	return runChat(ctx, newModel(ctx, p, draft, seed, parent), seed)
+}
+
+// ChatFromDraft opens the chat already in the review phase, showing a skill that
+// was drafted elsewhere (e.g. by `compile`) for the user to refine and confirm.
+func ChatFromDraft(ctx context.Context, p ai.Provider, draft Drafter, seed tui.WizardResult, parent string, spec *ai.SkillSpec) (tui.WizardResult, bool, error) {
+	m := newModel(ctx, p, draft, seed, parent)
+	m.spec = repair(spec, parent)
+	m.phase = phaseReview
+	m.transcript = []ai.Message{{Role: "user", Content: "I provided reference material; you drafted this skill."}}
+	m.msgs = append(m.msgs,
+		chatMsg{roleSystem, "Drafted a skill from your material — review and refine below."},
+		chatMsg{roleAssistant, cardString(m.spec)},
+	)
+	m.syncPlaceholder()
+	return runChat(ctx, m, seed)
+}
+
+func runChat(ctx context.Context, m model, seed tui.WizardResult) (tui.WizardResult, bool, error) {
+	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
 	final, err := prog.Run()
 	if err != nil {
 		if ctx.Err() != nil {

@@ -8,9 +8,7 @@ import (
 	"os/signal"
 
 	"github.com/mrdulasolutions/skillforge/internal/ai"
-	"github.com/mrdulasolutions/skillforge/internal/compliance"
 	"github.com/mrdulasolutions/skillforge/internal/forge"
-	"github.com/mrdulasolutions/skillforge/internal/skill"
 	"github.com/mrdulasolutions/skillforge/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -28,7 +26,7 @@ var (
 var newCmd = &cobra.Command{
 	Use:   "new [name]",
 	Short: "Scaffold a new skill (or plugin)",
-	Long:  "Scaffold a new portable skill (SKILL.md + structure). Runs an interactive wizard unless --yes is set.",
+	Long:  "Scaffold a new portable skill (SKILL.md + structure). Builds it conversationally with AI when configured, otherwise runs a quick form. --yes is non-interactive.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runNew,
 }
@@ -68,10 +66,7 @@ func runNew(_ *cobra.Command, args []string) error {
 			// Conversational, AI-driven flow.
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 			defer stop()
-			drafter := func(c context.Context, transcript []ai.Message, prior *ai.SkillSpec, instruction string) (*ai.SkillSpec, error) {
-				return ai.DraftSkill(c, p, ai.DefaultModel(p), transcript, prior, instruction)
-			}
-			r, ok, err := forge.Chat(ctx, p, drafter, res, newOut)
+			r, ok, err := forge.Chat(ctx, p, aiDrafter(p), res, newOut)
 			switch {
 			case errors.Is(err, forge.ErrDegrade):
 				r2, ferr := tui.RunWizard(res)
@@ -96,52 +91,5 @@ func runNew(_ *cobra.Command, args []string) error {
 		}
 	}
 
-	// Derive a valid kebab name from whatever the source produced. Idempotent
-	// for the conversational flow, which already returns a unique slug.
-	slug := skill.Slugify(res.Name)
-	if slug == "" {
-		return fmt.Errorf("could not derive a valid skill name from %q (try a name argument or --description)", res.Name)
-	}
-	res.Name = slug
-
-	sres, err := skill.Scaffold(skill.ScaffoldOptions{
-		Name:         res.Name,
-		Description:  res.Description,
-		Type:         res.Type,
-		IncludeEvals: res.IncludeEvals,
-		Compliance:   res.Compliance,
-		OutDir:       newOut,
-		Force:        newForce,
-		BodyOverride: res.BodyMarkdown,
-	})
-	if err != nil {
-		return err
-	}
-
-	if res.Compliance {
-		if err := compliance.Init(sres.SkillDir, res.Name); err != nil {
-			fmt.Println(tui.Warn("compliance enabled but audit log init failed: " + err.Error()))
-		}
-	}
-
-	fmt.Println()
-	fmt.Println(tui.OK("Created " + tui.Code.Render(sres.Root)))
-	fmt.Println()
-	fmt.Println(tui.FileTree(sres.Created))
-	fmt.Println()
-
-	if s, err := skill.Load(sres.SkillDir); err == nil {
-		fmt.Println(tui.Muted.Render("SKILL.md preview"))
-		fmt.Println(tui.KV([][2]string{
-			{"name", s.Frontmatter.Name},
-			{"description", s.Frontmatter.Description},
-		}))
-		fmt.Println()
-		fmt.Println(tui.RenderMarkdown(s.Body))
-		fmt.Println()
-	}
-
-	fmt.Println(tui.Info("Next: " + tui.Code.Render("skillforge build "+sres.Root) +
-		tui.Muted.Render("  then  ") + tui.Code.Render("skillforge package "+sres.Root)))
-	return nil
+	return scaffoldAndReport(res, newOut, newForce)
 }
