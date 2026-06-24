@@ -59,10 +59,14 @@ const (
 	footerH = 1
 )
 
-const anvilArt = ` ┌─────┐
- └──┬──┘
-┌───┴───┐
-└───────┘`
+// fireArt is the forge flame — an ember spark rising off a tapering tongue.
+// Rendered with a top-to-bottom fire gradient (red tips, amber base).
+const fireArt = `    ▗
+   ▟▙
+  ▟██▙
+ ▟████▙
+ ▐████▌
+  ▀██▀`
 
 var (
 	chatInputBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
@@ -530,7 +534,7 @@ func (m model) welcomeView(width int) string {
 		width = 78
 	}
 	innerW := width - 4
-	mascot := lipgloss.NewStyle().Foreground(tui.ColPrimary).Render(anvilArt)
+	mascot := tui.FireArt(fireArt)
 	steps := lipgloss.JoinVertical(lipgloss.Left,
 		tui.Subtitle.Render("How this works"),
 		tui.Val.Render("1. Describe a skill in plain words"),

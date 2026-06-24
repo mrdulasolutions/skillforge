@@ -153,3 +153,19 @@ func GradientRule(width int) string {
 	}
 	return gradientLine(strings.Repeat("─", width), FireFrom, FireTo, width)
 }
+
+// FireArt colors multi-line art top-to-bottom with the forge-fire gradient —
+// red at the tips, amber at the hot base.
+func FireArt(art string) string {
+	lines := strings.Split(art, "\n")
+	n := len(lines)
+	for i, line := range lines {
+		t := 0.0
+		if n > 1 {
+			t = float64(i) / float64(n-1)
+		}
+		col := lerp(FireFrom, FireTo, t)
+		lines[i] = lipgloss.NewStyle().Foreground(lipgloss.Color(col.hex())).Render(line)
+	}
+	return strings.Join(lines, "\n")
+}
