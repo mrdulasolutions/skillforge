@@ -1,0 +1,99 @@
+package ai
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+// OpenRouter calls the OpenRouter chat-completions API (OpenAI-compatible).
+type OpenRouter struct {
+	APIKey  string
+	BaseURL string
+	client  *http.Client
+}
+
+// NewOpenRouter builds a client from OPENROUTER_API_KEY / OPENROUTER_BASE_URL.
+func NewOpenRouter() *OpenRouter {
+	return &OpenRouter{
+		APIKey:  envOr("OPENROUTER_API_KEY", ""),
+		BaseURL: envOr("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+		client:  &http.Client{Timeout: 120 * time.Second},
+	}
+}
+
+func (o *OpenRouter) Name() string    { return "openrouter" }
+func (o *OpenRouter) Available() bool { return o.APIKey != "" }
+
+func (o *OpenRouter) Complete(ctx context.Context, req Request) (*Response, error) {
+	if o.APIKey == "" {
+		return nil, fmt.Errorf("OPENROUTER_API_KEY is not set")
+	}
+	payload := map[string]any{
+		"model":    req.Model,
+		"messages": toOpenAIMessages(req),
+	}
+	if req.Temperature > 0 {
+		payload["temperature"] = req.Temperature
+	}
+	if req.MaxTokens > 0 {
+		payload["max_tokens"] = req.MaxTokens
+	}
+	buf, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.BaseURL+"/chat/completions", bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+o.APIKey)
+	httpReq.Header.Set("HTTP-Referer", "https://github.com/mrdulasolutions/skillforge")
+	httpReq.Header.Set("X-Title", "Skill Forge")
+
+	resp, err := o.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Model string `json:"model"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("openrouter: decode response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		if out.Error != nil {
+			return nil, fmt.Errorf("openrouter: %s (HTTP %d)", out.Error.Message, resp.StatusCode)
+		}
+		return nil, fmt.Errorf("openrouter: HTTP %d", resp.StatusCode)
+	}
+	if len(out.Choices) == 0 {
+		return nil, fmt.Errorf("openrouter: empty response")
+	}
+	return &Response{Text: out.Choices[0].Message.Content, Model: out.Model}, nil
+}
+
+// toOpenAIMessages prepends the system prompt as a system message.
+func toOpenAIMessages(req Request) []map[string]string {
+	var msgs []map[string]string
+	if req.System != "" {
+		msgs = append(msgs, map[string]string{"role": "system", "content": req.System})
+	}
+	for _, m := range req.Messages {
+		msgs = append(msgs, map[string]string{"role": m.Role, "content": m.Content})
+	}
+	return msgs
+}

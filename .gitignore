@@ -1,0 +1,13 @@
+# Build output
+/dist/
+/skillforge
+/forge
+*.skill
+
+# Local audit logs / scaffolds created during testing
+.skillforge/
+/tmp/
+
+# OS / editor
+.DS_Store
+*.swp

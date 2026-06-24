@@ -1,0 +1,38 @@
+# {{.Title}}
+
+{{.Description}}
+
+## When to use this skill
+
+Use this skill when the user {describe concrete triggers} — e.g. mentions a
+specific task, asks for a particular output, or works with a known file type.
+Be specific and assertive: skills under-trigger when the description is vague.
+
+## Inputs
+
+- **Required:** {list the inputs this skill needs}
+- **Optional:** {list optional inputs and their defaults}
+
+## Instructions
+
+1. {Gather and validate the inputs}
+2. {Core procedure — the steps the agent should follow}
+3. {Produce the output in the expected format}
+
+## Output
+
+Describe the exact shape of a good result here so it is reproducible.
+
+## Examples
+
+**Prompt:** {a realistic user request}
+
+**Result:** {what the skill should produce}
+{{if .Compliance}}
+## Provenance & disclosure
+
+This skill runs under Skill Forge **compliance mode**. Sanitize untrusted
+inputs, record material actions to the audit log, and append the disclosure
+block from `references/disclosure.md` to every generated artifact. AI outputs
+are a starting point and must be reviewed by a qualified human before reliance.
+{{end}}

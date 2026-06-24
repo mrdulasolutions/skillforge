@@ -1,0 +1,40 @@
+version: 2
+project_name: skillforge
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: skillforge
+    main: .
+    binary: skillforge
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/mrdulasolutions/skillforge/cmd.version={{ .Version }}
+
+archives:
+  - id: default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-dev"
+
+release:
+  github:
+    owner: mrdulasolutions
+    name: skillforge
+
+changelog:
+  use: github
+  sort: asc
