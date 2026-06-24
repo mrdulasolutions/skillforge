@@ -26,6 +26,7 @@ make build && make install
 ## Quickstart
 
 ```sh
+skillforge setup                      # configure AI (stores key, verifies it works)
 skillforge new pdf-extractor          # interactive wizard (or pass -y -d "...")
 skillforge build pdf-extractor        # validate + best-practice warnings
 skillforge build pdf-extractor --optimize --fix   # AI-improve the description
@@ -37,6 +38,7 @@ skillforge doctor                     # check providers & environment
 
 | Command | What it does |
 |---|---|
+| `setup` | Configure an AI provider (OpenRouter or Ollama), store the key securely, and verify it with a live test call. |
 | `new <name>` | Scaffold a skill (or `--type plugin`) from embedded templates. `--compliance` adds the audit profile. |
 | `build [path]` | Validate `SKILL.md` (frontmatter rules + warnings). `--optimize` refines the description via AI; `--fix` applies it; `--json` for CI. |
 | `package [path]` | Validate, then zip into a `.skill` (excludes `evals/` and build artifacts). |
@@ -44,12 +46,14 @@ skillforge doctor                     # check providers & environment
 
 ## AI providers
 
-`--optimize` (and future `eval`/`compile`) use, in order of preference:
+Run **`skillforge setup`** to configure AI: pick OpenRouter (cloud) or Ollama (local), store the key in your OS keychain (0600-file fallback), and verify it with a live test call. This powers the conversational builder and `build --optimize`.
 
-- **OpenRouter** — one key, every cloud model. Set `OPENROUTER_API_KEY` (and optionally `OPENROUTER_MODEL`).
-- **Ollama** — local & offline. Runs automatically if reachable at `OLLAMA_HOST` (default `http://localhost:11434`); set `OLLAMA_MODEL`.
+Resolution order (so you can override per-shell or in CI):
 
-If neither is configured, AI steps are skipped gracefully — every other command works fully offline.
+- **OpenRouter** — `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` env, else the key/model saved by `setup`.
+- **Ollama** — `OLLAMA_HOST` / `OLLAMA_MODEL` env, else saved config, else `http://localhost:11434`.
+
+If neither is configured, AI steps degrade gracefully — every other command works fully offline.
 
 ## Compliance profile (opt-in)
 

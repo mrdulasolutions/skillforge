@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/mrdulasolutions/skillforge/internal/ai"
+	"github.com/mrdulasolutions/skillforge/internal/config"
 	"github.com/mrdulasolutions/skillforge/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -37,14 +39,21 @@ func runDoctor(_ *cobra.Command, _ []string) error {
 	}
 	fmt.Println()
 
-	fmt.Println(tui.Muted.Render("config"))
-	cfg, err := os.UserConfigDir()
-	if err == nil {
-		dir := filepath.Join(cfg, "skillforge")
-		writable := canWrite(dir)
-		fmt.Println("  " + tui.Step(writable, fmt.Sprintf("%-11s %s", "writable", tui.Muted.Render(dir))))
-	} else {
-		fmt.Println("  " + tui.Warn("could not resolve user config dir: "+err.Error()))
+	fmt.Println(tui.Muted.Render("configured"))
+	c := config.Load()
+	prov := c.Provider
+	model := ""
+	switch c.Provider {
+	case "openrouter":
+		model = c.OpenRouterModel
+	case "ollama":
+		model = c.OllamaModel
+	case "":
+		prov = "(none — run skillforge setup)"
+	}
+	fmt.Println("  " + tui.Step(c.Provider != "", fmt.Sprintf("%-11s %s", "provider", tui.Muted.Render(strings.TrimSpace(prov+" "+model)))))
+	if dir, derr := config.Dir(); derr == nil {
+		fmt.Println("  " + tui.Step(canWrite(dir), fmt.Sprintf("%-11s %s", "writable", tui.Muted.Render(dir))))
 	}
 	return nil
 }

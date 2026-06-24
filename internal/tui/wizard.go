@@ -73,6 +73,9 @@ func RunWizard(defaults WizardResult) (WizardResult, error) {
 	return r, nil
 }
 
+// FormTheme returns the Skill Forge huh theme for use by other commands.
+func FormTheme() *huh.Theme { return forgeHuhTheme() }
+
 func forgeHuhTheme() *huh.Theme {
 	t := huh.ThemeCharm()
 	t.Focused.Base = t.Focused.Base.BorderForeground(ColPrimary)

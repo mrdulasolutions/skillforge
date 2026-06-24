@@ -1,12 +1,31 @@
 package ai
 
-// DefaultModel returns the default model id for a provider, overridable by env.
+import (
+	"os"
+
+	"github.com/mrdulasolutions/skillforge/internal/config"
+)
+
+// DefaultModel returns the default model id for a provider: env override, then
+// the stored config, then a built-in default.
 func DefaultModel(p Provider) string {
 	switch p.(type) {
 	case *OpenRouter:
-		return envOr("OPENROUTER_MODEL", "anthropic/claude-3.5-sonnet")
+		if m := os.Getenv("OPENROUTER_MODEL"); m != "" {
+			return m
+		}
+		if cfg := config.Load(); cfg.OpenRouterModel != "" {
+			return cfg.OpenRouterModel
+		}
+		return "anthropic/claude-3.5-sonnet"
 	case *Ollama:
-		return envOr("OLLAMA_MODEL", "llama3.1")
+		if m := os.Getenv("OLLAMA_MODEL"); m != "" {
+			return m
+		}
+		if cfg := config.Load(); cfg.OllamaModel != "" {
+			return cfg.OllamaModel
+		}
+		return "llama3.1"
 	default:
 		return ""
 	}

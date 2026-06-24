@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
+
+	"github.com/mrdulasolutions/skillforge/internal/config"
 )
 
 // Ollama calls a local Ollama server's chat API for offline completion.
@@ -15,15 +18,51 @@ type Ollama struct {
 	client *http.Client
 }
 
-// NewOllama builds a client from OLLAMA_HOST (default http://localhost:11434).
+// NewOllama builds a client. The host comes from OLLAMA_HOST, then the stored
+// config, then the default http://localhost:11434.
 func NewOllama() *Ollama {
-	return &Ollama{
-		Host:   envOr("OLLAMA_HOST", "http://localhost:11434"),
-		client: &http.Client{Timeout: 120 * time.Second},
+	host := os.Getenv("OLLAMA_HOST")
+	if host == "" {
+		if cfg := config.Load(); cfg.OllamaHost != "" {
+			host = cfg.OllamaHost
+		}
 	}
+	if host == "" {
+		host = "http://localhost:11434"
+	}
+	return &Ollama{Host: host, client: &http.Client{Timeout: 120 * time.Second}}
 }
 
 func (o *Ollama) Name() string { return "ollama" }
+
+// ListModels returns the names of locally available Ollama models.
+func (o *Ollama) ListModels(ctx context.Context) ([]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.Host+"/api/tags", nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("ollama: HTTP %d", resp.StatusCode)
+	}
+	var out struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(out.Models))
+	for _, m := range out.Models {
+		names = append(names, m.Name)
+	}
+	return names, nil
+}
 
 // Available pings the local server with a short timeout so it never blocks the
 // CLI for long when Ollama isn't running.

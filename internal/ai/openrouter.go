@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/mrdulasolutions/skillforge/internal/config"
 )
 
 // OpenRouter calls the OpenRouter chat-completions API (OpenAI-compatible).
@@ -16,10 +18,17 @@ type OpenRouter struct {
 	client  *http.Client
 }
 
-// NewOpenRouter builds a client from OPENROUTER_API_KEY / OPENROUTER_BASE_URL.
+// NewOpenRouter builds a client. The API key comes from OPENROUTER_API_KEY, or
+// the stored secret (keychain/file) written by `skillforge setup`.
 func NewOpenRouter() *OpenRouter {
+	key := envOr("OPENROUTER_API_KEY", "")
+	if key == "" {
+		if k, err := config.GetSecret(config.SecretOpenRouterKey); err == nil {
+			key = k
+		}
+	}
 	return &OpenRouter{
-		APIKey:  envOr("OPENROUTER_API_KEY", ""),
+		APIKey:  key,
 		BaseURL: envOr("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
 		client:  &http.Client{Timeout: 120 * time.Second},
 	}
