@@ -223,19 +223,31 @@ func runVerify(label string, p ai.Provider, model string, timeout time.Duration)
 func reportSetup(storage, reply string, verr error) {
 	fmt.Println()
 	if verr != nil {
+		// A 429 means the key authenticated fine — the model is just busy.
+		if strings.Contains(verr.Error(), "429") {
+			fmt.Println(tui.OK("Your key is valid (authentication succeeded)."))
+			fmt.Println(tui.Warn("But that model is rate-limited right now (429)."))
+			printStorage(storage)
+			fmt.Println(tui.Muted.Render("Saved. Re-run `skillforge setup` to pick a less busy model — free (:free) models are heavily limited — or just try again in a moment."))
+			return
+		}
 		fmt.Println(tui.Err("Verification failed: " + verr.Error()))
 		fmt.Println(tui.Muted.Render("Settings were saved; fix the key/model and re-run setup."))
 		return
 	}
 	fmt.Println(tui.OK("AI is working " + tui.Muted.Render("(reply: "+reply+")")))
+	printStorage(storage)
+	fmt.Println()
+	fmt.Println(tui.Info("Next: " + tui.Code.Render("skillforge new") + " to build a skill conversationally"))
+}
+
+func printStorage(storage string) {
 	switch storage {
 	case "keychain":
 		fmt.Println(tui.OK("Key stored in your OS keychain"))
 	case "file":
 		fmt.Println(tui.OK("Key stored (0600) in your config dir"))
 	}
-	fmt.Println()
-	fmt.Println(tui.Info("Next: " + tui.Code.Render("skillforge new") + " to build a skill conversationally"))
 }
 
 func contains(s []string, v string) bool {

@@ -90,6 +90,9 @@ func (o *OpenRouter) Complete(ctx context.Context, req Request) (*Response, erro
 		if resp.StatusCode == http.StatusUnauthorized {
 			return nil, fmt.Errorf("OpenRouter rejected the API key (401) — verify it at https://openrouter.ai/keys")
 		}
+		if resp.StatusCode == http.StatusTooManyRequests {
+			return nil, fmt.Errorf("openrouter: rate-limited (429) — that model is busy or your key hit a limit; try another model or wait")
+		}
 		if out.Error != nil {
 			return nil, fmt.Errorf("openrouter: %s (HTTP %d)", out.Error.Message, resp.StatusCode)
 		}
@@ -137,6 +140,9 @@ func (o *OpenRouter) Stream(ctx context.Context, req Request, onDelta func(strin
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusUnauthorized {
 		return nil, fmt.Errorf("OpenRouter rejected the API key (401) — verify it at https://openrouter.ai/keys")
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf("openrouter: rate-limited (429) — that model is busy or your key hit a limit; try another model or wait")
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("openrouter: HTTP %d", resp.StatusCode)
