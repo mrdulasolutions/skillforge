@@ -80,6 +80,9 @@ var (
 			Background(tui.ColPrimary).
 			Bold(true).
 			Padding(0, 1)
+
+	menuBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(tui.ColPrimary).Padding(0, 1)
+	menuSel = lipgloss.NewStyle().Foreground(tui.ColPrimary).Bold(true)
 )
 
 type model struct {
@@ -107,8 +110,25 @@ type model struct {
 	follow        bool
 	ready         bool
 
+	menu    []slashCmd // active slash-command palette (filtered)
+	menuIdx int
+
 	result  *tui.WizardResult
 	degrade bool
+}
+
+type slashCmd struct {
+	name string
+	desc string
+}
+
+var slashCmds = []slashCmd{
+	{"/build", "build the skill now from what we've discussed"},
+	{"/new", "start over with a fresh conversation"},
+	{"/plugin", "package this as a plugin instead of a skill"},
+	{"/compliance", "toggle the compliance profile (audit + disclosure)"},
+	{"/help", "list the slash commands"},
+	{"/cancel", "quit without writing anything"},
 }
 
 func newModel(ctx context.Context, p ai.Provider, draft Drafter, seed tui.WizardResult, parent string) model {
@@ -161,6 +181,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.busy && strings.TrimSpace(m.ta.Value()) != "" {
 				m.ta.Reset()
 				m.growInput()
+				m.updateMenu()
 				return m, nil
 			}
 			m.stopStream()
@@ -169,11 +190,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.busy {
 				m.ta.InsertRune('\n')
 				m.growInput()
+				m.updateMenu()
 			}
 			return m, nil
 		case tea.KeyEnter:
 			if m.busy {
 				return m, nil
+			}
+			if len(m.menu) > 0 { // run the highlighted slash command
+				name := m.menu[m.menuIdx].name
+				m.ta.Reset()
+				m.growInput()
+				m.updateMenu()
+				return m.runSlash(name)
 			}
 			line := strings.TrimSpace(m.ta.Value())
 			if line == "" {
@@ -181,12 +210,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.ta.Reset()
 			m.growInput()
+			m.updateMenu()
 			return m, func() tea.Msg { return submitMsg{text: line} }
+		}
+		// Palette navigation takes over the arrow/tab keys while it's open.
+		if len(m.menu) > 0 {
+			switch msg.Type {
+			case tea.KeyUp:
+				m.menuIdx = (m.menuIdx - 1 + len(m.menu)) % len(m.menu)
+				return m, nil
+			case tea.KeyDown:
+				m.menuIdx = (m.menuIdx + 1) % len(m.menu)
+				return m, nil
+			case tea.KeyTab:
+				m.ta.SetValue(m.menu[m.menuIdx].name)
+				m.ta.CursorEnd()
+				m.growInput()
+				m.updateMenu()
+				return m, nil
+			}
 		}
 		if !m.busy {
 			m.ta, cmd = m.ta.Update(msg)
 			cmds = append(cmds, cmd)
 			m.growInput()
+			m.updateMenu()
 		}
 		m.vp, cmd = m.vp.Update(msg)
 		cmds = append(cmds, cmd)
@@ -521,10 +569,13 @@ func (m model) headerView() string {
 
 func (m model) footerView() string {
 	var keys []string
-	if m.phase == phaseReview {
+	switch {
+	case len(m.menu) > 0:
+		keys = []string{"↑↓ select", "tab complete", "enter run", "esc close"}
+	case m.phase == phaseReview:
 		keys = []string{"enter send", `"go" to build`, "type to refine", "esc cancel"}
-	} else {
-		keys = []string{"enter send", "ctrl+j newline", "↑↓ scroll", "esc cancel"}
+	default:
+		keys = []string{"enter send", "/ commands", "ctrl+j newline", "esc cancel"}
 	}
 	parts := make([]string, len(keys))
 	for i, k := range keys {
@@ -561,8 +612,9 @@ func (m model) View() string {
 	} else {
 		input = chatInputBox.BorderForeground(tui.ColPrimary).Render(m.ta.View())
 	}
+	vpView := overlayBottom(m.vp.View(), m.menuView())
 	return lipgloss.JoinVertical(lipgloss.Left,
-		m.headerView(), m.vp.View(), input, m.footerView())
+		m.headerView(), vpView, input, m.footerView())
 }
 
 // --- small helpers ---
@@ -594,6 +646,113 @@ func truncateStr(s string, max int) string {
 		return s
 	}
 	return string(r[:max-1]) + "…"
+}
+
+// --- slash commands ---
+
+// updateMenu recomputes the command palette from the current input.
+func (m *model) updateMenu() {
+	val := m.ta.Value()
+	if m.busy || !strings.HasPrefix(val, "/") || strings.ContainsAny(val, " \n") {
+		m.menu = nil
+		m.menuIdx = 0
+		return
+	}
+	prefix := strings.ToLower(val)
+	var out []slashCmd
+	for _, c := range slashCmds {
+		if strings.HasPrefix(c.name, prefix) {
+			out = append(out, c)
+		}
+	}
+	m.menu = out
+	if m.menuIdx >= len(out) {
+		m.menuIdx = 0
+	}
+}
+
+// runSlash executes a slash command and clears the palette.
+func (m model) runSlash(name string) (tea.Model, tea.Cmd) {
+	m.menu = nil
+	switch name {
+	case "/cancel", "/quit", "/exit", "/q":
+		m.stopStream()
+		return m, tea.Quit
+	case "/help":
+		m.msgs = append(m.msgs, chatMsg{roleSystem, slashHelp()})
+	case "/new":
+		m.transcript = nil
+		m.spec = nil
+		m.phase = phaseInterview
+		m.syncPlaceholder()
+		m.msgs = append(m.msgs, chatMsg{roleSystem, "started over — describe a new skill"})
+	case "/plugin":
+		m.seed.Type = "plugin"
+		m.msgs = append(m.msgs, chatMsg{roleSystem, "this will be packaged as a plugin"})
+	case "/compliance":
+		m.seed.Compliance = !m.seed.Compliance
+		state := "off"
+		if m.seed.Compliance {
+			state = "on"
+		}
+		m.msgs = append(m.msgs, chatMsg{roleSystem, "compliance profile " + state})
+	case "/build", "/go", "/draft", "/make":
+		if m.phase == phaseReview {
+			res := finalize(m.spec, m.seed)
+			m.result = &res
+			return m, tea.Quit
+		}
+		return m.startDraft(nil, "")
+	default:
+		m.msgs = append(m.msgs, chatMsg{roleSystem, "unknown command: " + name})
+	}
+	m.follow = true
+	m.refreshViewport()
+	return m, nil
+}
+
+func slashHelp() string {
+	var b strings.Builder
+	b.WriteString("slash commands:")
+	for _, c := range slashCmds {
+		b.WriteString("\n  " + c.name + " — " + c.desc)
+	}
+	return b.String()
+}
+
+// menuView renders the command palette as a bordered popup.
+func (m model) menuView() string {
+	if len(m.menu) == 0 {
+		return ""
+	}
+	lines := make([]string, len(m.menu))
+	for i, c := range m.menu {
+		if i == m.menuIdx {
+			lines[i] = menuSel.Render("▸ "+c.name) + tui.Muted.Render("  "+c.desc)
+		} else {
+			lines[i] = tui.Val.Render("  "+c.name) + tui.Muted.Render("  "+c.desc)
+		}
+	}
+	w := m.width - 2
+	if w < 10 {
+		w = 10
+	}
+	return menuBox.Width(w).Render(strings.Join(lines, "\n"))
+}
+
+// overlayBottom replaces the last N lines of base with overlay (N = overlay's
+// height), so the palette floats over the bottom of the viewport without
+// resizing it.
+func overlayBottom(base, overlay string) string {
+	if overlay == "" {
+		return base
+	}
+	baseLines := strings.Split(base, "\n")
+	ovLines := strings.Split(overlay, "\n")
+	if len(ovLines) >= len(baseLines) {
+		return overlay
+	}
+	return strings.Join(append(baseLines[:len(baseLines)-len(ovLines)], ovLines...), "\n")
 }
 
 // Chat runs the full-screen conversational TUI starting from the interview and

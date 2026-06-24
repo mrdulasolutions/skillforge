@@ -104,6 +104,48 @@ func TestModelCancel(t *testing.T) {
 	}
 }
 
+func TestSlashMenuFilter(t *testing.T) {
+	m := newTestModel(t, nil)
+	m.ta.SetValue("/")
+	m.updateMenu()
+	if len(m.menu) != len(slashCmds) {
+		t.Fatalf("'/' should list all %d, got %d", len(slashCmds), len(m.menu))
+	}
+	m.ta.SetValue("/co")
+	m.updateMenu()
+	if len(m.menu) != 1 || m.menu[0].name != "/compliance" {
+		t.Fatalf("'/co' -> %+v", m.menu)
+	}
+	m.ta.SetValue("/zzz")
+	m.updateMenu()
+	if len(m.menu) != 0 {
+		t.Fatal("'/zzz' should match nothing")
+	}
+	m.ta.SetValue("hello there")
+	m.updateMenu()
+	if m.menu != nil {
+		t.Fatal("non-slash input should close the menu")
+	}
+}
+
+func TestSlashRunActions(t *testing.T) {
+	if nm, _ := newTestModel(t, nil).runSlash("/plugin"); nm.(model).seed.Type != "plugin" {
+		t.Error("/plugin should set type=plugin")
+	}
+	if nm, _ := newTestModel(t, nil).runSlash("/compliance"); !nm.(model).seed.Compliance {
+		t.Error("/compliance should enable compliance")
+	}
+	if nm, _ := newTestModel(t, nil).runSlash("/cancel"); nm.(model).result != nil {
+		t.Error("/cancel must not set a result")
+	}
+	m := newTestModel(t, nil)
+	m.transcript = []ai.Message{{Role: "user", Content: "x"}}
+	m.phase = phaseReview
+	if nm, _ := m.runSlash("/new"); len(nm.(model).transcript) != 0 || nm.(model).phase != phaseInterview {
+		t.Error("/new should reset the conversation")
+	}
+}
+
 func mustUpdate(t *testing.T, m model, msg tea.Msg) model {
 	t.Helper()
 	nm, _ := m.Update(msg)

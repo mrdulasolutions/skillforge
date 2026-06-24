@@ -59,10 +59,14 @@ func repair(spec *ai.SkillSpec, parent string) *ai.SkillSpec {
 }
 
 func finalize(spec *ai.SkillSpec, seed tui.WizardResult) tui.WizardResult {
+	typ := spec.Type
+	if seed.Type == "plugin" { // honor a /plugin or --type plugin override
+		typ = "plugin"
+	}
 	return tui.WizardResult{
 		Name:         spec.Name,
 		Description:  spec.Description,
-		Type:         spec.Type,
+		Type:         typ,
 		IncludeEvals: spec.Evals,
 		Compliance:   spec.Compliance || seed.Compliance,
 		BodyMarkdown: spec.Body,
