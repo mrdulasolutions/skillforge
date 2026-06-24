@@ -2,6 +2,8 @@ package forge
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -55,7 +57,6 @@ type draftDoneMsg struct {
 const (
 	headerH = 2
 	footerH = 1
-	inputH  = 3
 )
 
 const anvilArt = ` ┌─────┐
@@ -65,12 +66,20 @@ const anvilArt = ` ┌─────┐
 
 var (
 	chatInputBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).Padding(0, 1)
-	chatUserChip = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder(), false, false, false, true).
+
+	userLabel  = lipgloss.NewStyle().Foreground(tui.ColPrimary).Bold(true)
+	userBubble = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder(), false, true, false, false).
 			BorderForeground(tui.ColPrimary).
 			Foreground(tui.ColText).
-			PaddingLeft(1)
-	chatAsstLabel = lipgloss.NewStyle().Foreground(tui.ColAccent).Bold(true)
+			PaddingRight(1)
+	asstLabel = lipgloss.NewStyle().Foreground(tui.ColAccent).Bold(true)
+
+	phaseChipStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#1A1206")).
+			Background(tui.ColPrimary).
+			Bold(true).
+			Padding(0, 1)
 )
 
 type model struct {
@@ -150,9 +159,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyEsc:
 			if !m.busy && strings.TrimSpace(m.ta.Value()) != "" {
 				m.ta.Reset()
+				m.growInput()
 				return m, nil
 			}
 			return m, tea.Quit
+		case tea.KeyCtrlJ:
+			if !m.busy {
+				m.ta.InsertRune('\n')
+				m.growInput()
+			}
+			return m, nil
 		case tea.KeyEnter:
 			if m.busy {
 				return m, nil
@@ -162,11 +178,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.ta.Reset()
+			m.growInput()
 			return m, func() tea.Msg { return submitMsg{text: line} }
 		}
 		if !m.busy {
 			m.ta, cmd = m.ta.Update(msg)
 			cmds = append(cmds, cmd)
+			m.growInput()
 		}
 		m.vp, cmd = m.vp.Update(msg)
 		cmds = append(cmds, cmd)
@@ -200,6 +218,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.phase = phaseReady
 			m.msgs = append(m.msgs, chatMsg{roleSystem, `say "go" to build it, or add more detail`})
 		}
+		m.syncPlaceholder()
 		m.ta.Focus()
 		m.refreshViewport()
 		return m, textarea.Blink
@@ -212,6 +231,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spec = repair(msg.spec, m.parent)
 		m.phase = phaseReview
 		m.msgs = append(m.msgs, chatMsg{roleAssistant, cardString(m.spec)})
+		m.syncPlaceholder()
 		m.ta.Focus()
 		m.refreshViewport()
 		return m, textarea.Blink
@@ -351,10 +371,11 @@ func draftCmd(ctx context.Context, draft Drafter, transcript []ai.Message, prior
 
 // --- layout & rendering ---
 
+func (m *model) inputZoneH() int { return m.ta.Height() + 2 }
+
 func (m *model) relayout() {
 	m.ta.SetWidth(m.width - 4)
-	m.ta.SetHeight(1)
-	vpH := m.height - headerH - footerH - inputH
+	vpH := m.height - headerH - footerH - m.inputZoneH()
 	if vpH < 1 {
 		vpH = 1
 	}
@@ -362,6 +383,35 @@ func (m *model) relayout() {
 		m.vp = viewport.New(m.width, vpH)
 	} else {
 		m.vp.Width, m.vp.Height = m.width, vpH
+	}
+}
+
+// growInput sizes the input box (1–4 rows) to the typed content.
+func (m *model) growInput() {
+	n := strings.Count(m.ta.Value(), "\n") + 1
+	if n < 1 {
+		n = 1
+	}
+	if n > 4 {
+		n = 4
+	}
+	if m.ta.Height() != n {
+		m.ta.SetHeight(n)
+		if m.ready {
+			m.relayout()
+			m.refreshViewport()
+		}
+	}
+}
+
+func (m *model) syncPlaceholder() {
+	switch m.phase {
+	case phaseReview:
+		m.ta.Placeholder = `say "go" to build, or tell me what to change…`
+	case phaseReady:
+		m.ta.Placeholder = `say "go" to build, or add more detail…`
+	default:
+		m.ta.Placeholder = "Describe the skill you want — plain words…"
 	}
 }
 
@@ -384,63 +434,70 @@ func (m model) renderMessages() string {
 		switch c.role {
 		case roleUser:
 			block := lipgloss.JoinVertical(lipgloss.Right,
-				tui.Subtitle.Render("you ›"), chatUserChip.Render(c.text))
+				userLabel.Render("you ›"), userBubble.Render(c.text))
 			b.WriteString(lipgloss.PlaceHorizontal(w, lipgloss.Right, block))
 		case roleAssistant:
-			b.WriteString(chatAsstLabel.Render("forge ◆") + "  " + tui.RenderMarkdown(c.text))
+			b.WriteString(asstLabel.Render("forge ◆") + "\n" + tui.RenderMarkdown(c.text))
 		case roleSystem:
 			b.WriteString(tui.Muted.Render(tui.GlyphSpark + " " + c.text))
 		}
 		b.WriteString("\n\n")
 	}
 	if m.busy && m.pending.Len() > 0 {
-		b.WriteString(chatAsstLabel.Render("forge ◆") + "  " +
+		b.WriteString(asstLabel.Render("forge ◆") + "\n" +
 			m.pending.String() + lipgloss.NewStyle().Foreground(tui.ColPrimary).Render("▏"))
 	}
 	return lipgloss.NewStyle().Width(w).Render(b.String())
 }
 
 func (m model) welcomeView(width int) string {
-	if width > 76 {
-		width = 76
+	if width > 78 {
+		width = 78
 	}
+	innerW := width - 4
 	mascot := lipgloss.NewStyle().Foreground(tui.ColPrimary).Render(anvilArt)
-	left := lipgloss.JoinVertical(lipgloss.Left,
-		mascot,
-		"",
-		tui.Muted.Render(m.p.Name()+" · "+ai.DefaultModel(m.p)),
-	)
 	steps := lipgloss.JoinVertical(lipgloss.Left,
 		tui.Subtitle.Render("How this works"),
 		tui.Val.Render("1. Describe a skill in plain words"),
 		tui.Val.Render("2. I draft it — refine by chatting"),
 		tui.Val.Render(`3. Say "go" and I write the files`),
 	)
-	var body string
-	if width >= 60 {
-		body = lipgloss.JoinHorizontal(lipgloss.Top, left, "     ", steps)
+	var top string
+	if innerW >= 50 {
+		top = lipgloss.JoinHorizontal(lipgloss.Top, mascot, "     ", steps)
 	} else {
-		body = lipgloss.JoinVertical(lipgloss.Left, left, "", steps)
+		top = lipgloss.JoinVertical(lipgloss.Left, mascot, "", steps)
 	}
+	modelLine := tui.Muted.Render(truncateStr(m.p.Name()+" · "+ai.DefaultModel(m.p), innerW))
+	body := lipgloss.JoinVertical(lipgloss.Left, top, "", modelLine)
 	return tui.TitledBox("Skill Forge", body, width)
 }
 
 func (m model) headerView() string {
 	left := tui.CompactBanner()
-	status := tui.Muted.Render(m.phaseVerb() + " · " + m.p.Name())
-	pad := m.width - lipgloss.Width(left) - lipgloss.Width(status)
+	chip := phaseChipStyle.Render(m.phaseWord())
+	full := ai.DefaultModel(m.p)
+	right := chip + "  " + tui.Muted.Render(shortModel(full))
+	if cwd := shortCwd(); cwd != "" {
+		cand := chip + "  " + tui.Muted.Render(cwd+" · "+shortModel(full))
+		if lipgloss.Width(left)+lipgloss.Width(cand)+2 <= m.width {
+			right = cand
+		}
+	}
+	pad := m.width - lipgloss.Width(left) - lipgloss.Width(right)
 	if pad < 1 {
 		pad = 1
 	}
-	bar := left + strings.Repeat(" ", pad) + status
-	rule := lipgloss.NewStyle().Foreground(tui.ColPrimary).Render(strings.Repeat("─", m.width))
-	return bar + "\n" + rule
+	bar := left + strings.Repeat(" ", pad) + right
+	return bar + "\n" + tui.GradientRule(m.width)
 }
 
 func (m model) footerView() string {
-	keys := []string{"enter send", "esc cancel", "↑↓ scroll", "ctrl+c quit"}
+	var keys []string
 	if m.phase == phaseReview {
-		keys = []string{`"go" build`, "type to refine", "esc cancel"}
+		keys = []string{"enter send", `"go" to build`, "type to refine", "esc cancel"}
+	} else {
+		keys = []string{"enter send", "ctrl+j newline", "↑↓ scroll", "esc cancel"}
 	}
 	parts := make([]string, len(keys))
 	for i, k := range keys {
@@ -449,14 +506,17 @@ func (m model) footerView() string {
 	return lipgloss.NewStyle().Width(m.width).Render(strings.Join(parts, tui.Muted.Render(" · ")))
 }
 
-func (m model) phaseVerb() string {
+func (m model) phaseWord() string {
+	if m.busy {
+		return "working"
+	}
 	switch m.phase {
 	case phaseReady:
-		return "ready to build"
+		return "ready"
 	case phaseReview:
-		return "reviewing draft"
+		return "review"
 	default:
-		return "forging a skill"
+		return "interview"
 	}
 }
 
@@ -476,6 +536,37 @@ func (m model) View() string {
 	}
 	return lipgloss.JoinVertical(lipgloss.Left,
 		m.headerView(), m.vp.View(), input, m.footerView())
+}
+
+// --- small helpers ---
+
+func shortModel(s string) string {
+	if i := strings.LastIndex(s, "/"); i >= 0 {
+		s = s[i+1:]
+	}
+	if s == "" {
+		return "—"
+	}
+	return truncateStr(s, 24)
+}
+
+func shortCwd() string {
+	d, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	return filepath.Base(d)
+}
+
+func truncateStr(s string, max int) string {
+	if max < 1 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	return string(r[:max-1]) + "…"
 }
 
 // Chat runs the full-screen conversational TUI and returns the result for

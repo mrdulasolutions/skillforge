@@ -145,3 +145,11 @@ func Banner() string {
 func CompactBanner() string {
 	return gradientLine("◆ SKILL FORGE", FireFrom, FireTo, 0)
 }
+
+// GradientRule renders a full-width horizontal rule in the forge-fire gradient.
+func GradientRule(width int) string {
+	if width < 1 {
+		return ""
+	}
+	return gradientLine(strings.Repeat("─", width), FireFrom, FireTo, width)
+}
