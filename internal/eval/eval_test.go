@@ -63,6 +63,18 @@ func TestProgressCallback(t *testing.T) {
 	}
 }
 
+func TestJudgeStrictVerdict(t *testing.T) {
+	// Regression: a FAIL verdict containing the word "pass" must score 0.
+	f := &File{Evals: []Case{{ID: 1, Expectations: []string{"a"}}}}
+	rep, err := Run(context.Background(), fakeProvider{verdict: "FAIL — the output does not pass"}, "m", "body", f, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.WithSkillPassRate != 0 {
+		t.Fatalf("expected 0 pass rate, got %v", rep.WithSkillPassRate)
+	}
+}
+
 func TestHTML(t *testing.T) {
 	f := &File{SkillName: "demo", Evals: []Case{{ID: 1, Prompt: "p", Expectations: []string{"a"}}}}
 	rep, _ := Run(context.Background(), fakeProvider{verdict: "PASS"}, "m", "body", f, false, nil)

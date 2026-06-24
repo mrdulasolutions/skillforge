@@ -100,7 +100,8 @@ type model struct {
 
 	busy     bool
 	streamCh chan deltaEv
-	pending  strings.Builder
+	cancel   context.CancelFunc // cancels the in-flight stream/draft
+	pending  string             // in-progress assistant text (value-copy safe)
 
 	width, height int
 	follow        bool
@@ -154,6 +155,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
+			m.stopStream()
 			return m, tea.Quit
 		case tea.KeyEsc:
 			if !m.busy && strings.TrimSpace(m.ta.Value()) != "" {
@@ -161,6 +163,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.growInput()
 				return m, nil
 			}
+			m.stopStream()
 			return m, tea.Quit
 		case tea.KeyCtrlJ:
 			if !m.busy {
@@ -194,21 +197,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleSubmit(msg.text)
 
 	case streamDeltaMsg:
-		m.pending.WriteString(msg.delta)
+		m.pending += msg.delta
 		m.refreshViewport()
 		return m, waitForDelta(m.streamCh)
 
 	case streamDoneMsg:
 		m.busy = false
 		m.streamCh = nil
+		m.stopStream()
 		if msg.err != nil {
 			return m.failOrCancel(msg.err)
 		}
 		reply := msg.full
 		if strings.TrimSpace(reply) == "" {
-			reply = m.pending.String()
+			reply = m.pending
 		}
-		m.pending.Reset()
+		m.pending = ""
 		if strings.TrimSpace(reply) == "" {
 			// Some free / reasoning models return empty content (the budget goes
 			// to hidden reasoning). Don't show a blank turn or advance to ready.
@@ -233,6 +237,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case draftDoneMsg:
 		m.busy = false
+		m.stopStream()
 		if msg.err != nil {
 			return m.failOrCancel(msg.err)
 		}
@@ -307,10 +312,12 @@ func firstUserConcept(t []ai.Message, fallback string) string {
 
 func (m model) startInterview() (tea.Model, tea.Cmd) {
 	m.busy = true
-	m.pending.Reset()
+	m.pending = ""
 	m.ta.Blur()
 	ch := make(chan deltaEv, 64)
 	m.streamCh = ch
+	streamCtx, cancel := context.WithCancel(m.ctx)
+	m.cancel = cancel
 	req := ai.Request{
 		Model:       ai.DefaultModel(m.p),
 		System:      ai.InterviewSystem,
@@ -318,7 +325,14 @@ func (m model) startInterview() (tea.Model, tea.Cmd) {
 		Temperature: 0.5,
 		MaxTokens:   500,
 	}
-	return m, tea.Batch(m.sp.Tick, streamCmd(m.ctx, m.p, req, ch), waitForDelta(ch))
+	return m, tea.Batch(m.sp.Tick, streamCmd(streamCtx, m.p, req, ch), waitForDelta(ch))
+}
+
+func (m *model) stopStream() {
+	if m.cancel != nil {
+		m.cancel()
+		m.cancel = nil
+	}
 }
 
 func streamCmd(ctx context.Context, p ai.Provider, req ai.Request, ch chan deltaEv) tea.Cmd {
@@ -368,9 +382,11 @@ func waitForDelta(ch chan deltaEv) tea.Cmd {
 func (m model) startDraft(prior *ai.SkillSpec, instruction string) (tea.Model, tea.Cmd) {
 	m.busy = true
 	m.ta.Blur()
+	streamCtx, cancel := context.WithCancel(m.ctx)
+	m.cancel = cancel
 	m.msgs = append(m.msgs, chatMsg{roleSystem, tui.GlyphSpark + " drafting your skill…"})
 	m.refreshViewport()
-	return m, tea.Batch(m.sp.Tick, draftCmd(m.ctx, m.draft, m.transcript, prior, instruction))
+	return m, tea.Batch(m.sp.Tick, draftCmd(streamCtx, m.draft, m.transcript, prior, instruction))
 }
 
 func draftCmd(ctx context.Context, draft Drafter, transcript []ai.Message, prior *ai.SkillSpec, instr string) tea.Cmd {
@@ -454,9 +470,9 @@ func (m model) renderMessages() string {
 		}
 		b.WriteString("\n\n")
 	}
-	if m.busy && m.pending.Len() > 0 {
+	if m.busy && len(m.pending) > 0 {
 		b.WriteString(asstLabel.Render("forge ◆") + "\n" +
-			m.pending.String() + lipgloss.NewStyle().Foreground(tui.ColPrimary).Render("▏"))
+			m.pending + lipgloss.NewStyle().Foreground(tui.ColPrimary).Render("▏"))
 	}
 	return lipgloss.NewStyle().Width(w).Render(b.String())
 }

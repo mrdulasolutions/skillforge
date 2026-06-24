@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 )
 
 // Source records one ingested file.
@@ -70,13 +71,22 @@ func Gather(paths []string, budget int) (*Result, error) {
 			res.Skipped++
 			return
 		}
-		chunk := string(data)
-		if remaining := budget - used; len(chunk) > remaining {
-			chunk = chunk[:remaining]
+		head := "\n\n===== FILE: " + path + " =====\n"
+		remaining := budget - used - len(head)
+		if remaining <= 0 {
+			res.Skipped++
+			return
 		}
-		b.WriteString("\n\n===== FILE: " + path + " =====\n")
+		chunk := string(data)
+		if len(chunk) > remaining {
+			chunk = chunk[:remaining]
+			for len(chunk) > 0 && !utf8.ValidString(chunk) { // back off to a rune boundary
+				chunk = chunk[:len(chunk)-1]
+			}
+		}
+		b.WriteString(head)
 		b.WriteString(chunk)
-		used += len(chunk)
+		used += len(head) + len(chunk)
 		res.Sources = append(res.Sources, Source{Path: path, Bytes: len(chunk)})
 	}
 

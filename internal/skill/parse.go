@@ -33,7 +33,12 @@ func splitFrontmatter(content string) (frontmatter, body string, reason frontmat
 		return "", "", frontmatterMalformed
 	}
 	frontmatter = rest[:idx]
-	body = strings.TrimPrefix(rest[idx+len("\n---"):], "\n")
+	// Body begins after the entire closing-fence line, so a non-standard fence
+	// (----, ---x) doesn't leak stray characters into the body.
+	afterFence := rest[idx+1:] // skip the leading '\n'
+	if nl := strings.IndexByte(afterFence, '\n'); nl >= 0 {
+		body = afterFence[nl+1:]
+	}
 	return frontmatter, body, frontmatterOK
 }
 

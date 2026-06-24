@@ -4,13 +4,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/mrdulasolutions/skillforge/internal/skill"
 	"github.com/mrdulasolutions/skillforge/internal/tui"
 	"github.com/spf13/cobra"
 )
+
+const maxDownloadBytes = 256 << 20 // 256 MiB
 
 var importDir string
 
@@ -61,8 +65,13 @@ func isURL(s string) bool {
 	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
 }
 
-func downloadTemp(url string) (string, func(), error) {
-	resp, err := http.Get(url)
+func downloadTemp(rawURL string) (string, func(), error) {
+	u, err := url.Parse(rawURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return "", nil, fmt.Errorf("unsupported URL (only http/https): %s", rawURL)
+	}
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Get(rawURL)
 	if err != nil {
 		return "", nil, err
 	}
@@ -74,11 +83,15 @@ func downloadTemp(url string) (string, func(), error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return "", nil, err
-	}
+	n, copyErr := io.Copy(tmp, io.LimitReader(resp.Body, maxDownloadBytes+1))
 	tmp.Close()
+	if copyErr != nil {
+		os.Remove(tmp.Name())
+		return "", nil, copyErr
+	}
+	if n > maxDownloadBytes {
+		os.Remove(tmp.Name())
+		return "", nil, fmt.Errorf("download exceeds the %d-byte limit", maxDownloadBytes)
+	}
 	return tmp.Name(), func() { os.Remove(tmp.Name()) }, nil
 }

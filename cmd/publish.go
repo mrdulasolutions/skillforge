@@ -65,17 +65,25 @@ func runPublish(_ *cobra.Command, args []string) error {
 		manifest["description"] = s.Frontmatter.Description
 	}
 	manifestPath := pr.Output + ".json"
+	manifestWritten := false
 	if b, merr := json.MarshalIndent(manifest, "", "  "); merr == nil {
-		_ = os.WriteFile(manifestPath, b, 0o644)
+		if werr := os.WriteFile(manifestPath, b, 0o644); werr == nil {
+			manifestWritten = true
+		} else {
+			fmt.Println(tui.Warn("could not write manifest: " + werr.Error()))
+		}
 	}
 
 	fmt.Println(tui.OK("Published " + tui.Code.Render(pr.Output)))
 	fmt.Println()
-	fmt.Println(tui.KV([][2]string{
+	rows := [][2]string{
 		{"sha256", sum[:16] + "…"},
 		{"size", fmt.Sprintf("%d bytes", info.Size())},
-		{"manifest", filepath.Base(manifestPath)},
-	}))
+	}
+	if manifestWritten {
+		rows = append(rows, [2]string{"manifest", filepath.Base(manifestPath)})
+	}
+	fmt.Println(tui.KV(rows))
 	fmt.Println()
 	fmt.Println(tui.Info("Share the .skill file. Others install it with: " + tui.Code.Render("skillforge import "+pr.Output)))
 	return nil

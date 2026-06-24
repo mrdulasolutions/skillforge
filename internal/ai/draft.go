@@ -122,16 +122,10 @@ func parseSpec(text string) (*SkillSpec, error) {
 // extractJSON returns the first complete JSON object in s, ignoring braces
 // inside strings and stripping ``` fences.
 func extractJSON(s string) string {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```") {
-		if i := strings.IndexByte(s, '\n'); i >= 0 {
-			s = s[i+1:]
-		}
-		if j := strings.LastIndex(s, "```"); j >= 0 {
-			s = s[:j]
-		}
-		s = strings.TrimSpace(s)
-	}
+	// The brace scanner below is string-aware, so a ```json wrapper before the
+	// first '{' is skipped and a trailing ``` after the matching '}' is never
+	// reached — no fence stripping needed (stripping fences naively truncates
+	// JSON whose body markdown itself contains ``` fences).
 	start := strings.IndexByte(s, '{')
 	if start < 0 {
 		return ""

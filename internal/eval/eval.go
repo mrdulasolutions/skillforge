@@ -151,7 +151,12 @@ func judge(ctx context.Context, p ai.Provider, model, output, expectation string
 	if err != nil {
 		return false
 	}
-	return strings.Contains(strings.ToUpper(resp.Text), "PASS")
+	// Strict verdict: a FAIL containing the word "pass" must not count as PASS.
+	v := strings.ToUpper(strings.TrimSpace(resp.Text))
+	if strings.HasPrefix(v, "FAIL") {
+		return false
+	}
+	return v == "PASS" || strings.HasPrefix(v, "PASS")
 }
 
 func rate(e []ExpResult) float64 { return ratio(passes(e), len(e)) }
@@ -174,8 +179,8 @@ func ratio(a, b int) float64 {
 }
 
 func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
 	}
 	return s
 }

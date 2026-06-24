@@ -171,9 +171,15 @@ func (o *OpenRouter) Stream(ctx context.Context, req Request, onDelta func(strin
 					Content string `json:"content"`
 				} `json:"delta"`
 			} `json:"choices"`
+			Error *struct {
+				Message string `json:"message"`
+			} `json:"error"`
 		}
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
+		}
+		if chunk.Error != nil {
+			return nil, fmt.Errorf("openrouter: %s", chunk.Error.Message)
 		}
 		if len(chunk.Choices) > 0 {
 			if d := chunk.Choices[0].Delta.Content; d != "" {

@@ -85,6 +85,26 @@ func TestInitCreatesLog(t *testing.T) {
 	}
 }
 
+func TestAuditChainLargeIntMetadata(t *testing.T) {
+	// Regression: large ints in metadata round-tripped through float64 and broke
+	// HMAC verification. UseNumber keeps them exact.
+	t.Setenv("SKILLFORGE_AUDIT_KEY", "0123456789abcdef0123456789abcdef")
+	dir := t.TempDir()
+	if _, err := Append(dir, Event{EventType: "x", Metadata: map[string]any{"big": int64(9007199254740993)}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Append(dir, Event{EventType: "y", Metadata: map[string]any{"n": 12345678901234567}}); err != nil {
+		t.Fatal(err)
+	}
+	v, err := Verify(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.OK {
+		t.Fatalf("expected verified chain with large-int metadata, got %+v", v)
+	}
+}
+
 func contains(s []string, v string) bool {
 	for _, x := range s {
 		if x == v {

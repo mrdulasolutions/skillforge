@@ -39,6 +39,12 @@ func TestExtractJSON(t *testing.T) {
 	if extractJSON("no json here") != "" {
 		t.Error("expected empty for input with no JSON")
 	}
+
+	// Regression: body markdown containing ``` fences must not truncate the JSON.
+	withFences := `{"title":"T","name":"t","description":"d","body":"see:\n` + "```" + `\nx=1\n` + "```" + `\n","type":"skill","evals":true,"compliance":false}`
+	if got := extractJSON("```json\n" + withFences); got != withFences {
+		t.Errorf("fence-in-body truncated:\n got=%q\nwant=%q", got, withFences)
+	}
 }
 
 func TestDraftSkill(t *testing.T) {

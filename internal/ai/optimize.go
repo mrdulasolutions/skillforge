@@ -63,8 +63,8 @@ func cleanDescription(s string) string {
 		line = strings.ReplaceAll(line, ">", "")
 		line = strings.TrimSpace(line)
 		if line != "" {
-			if len(line) > 1024 {
-				line = strings.TrimSpace(line[:1024])
+			if r := []rune(line); len(r) > 1024 {
+				line = strings.TrimSpace(string(r[:1024]))
 			}
 			return line
 		}
@@ -73,8 +73,8 @@ func cleanDescription(s string) string {
 }
 
 func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
 	}
 	return s
 }

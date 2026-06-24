@@ -114,9 +114,13 @@ func (o *Ollama) Complete(ctx context.Context, req Request) (*Response, error) {
 			Content string `json:"content"`
 		} `json:"message"`
 		Model string `json:"model"`
+		Error string `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return nil, fmt.Errorf("ollama: decode response: %w", err)
+	}
+	if out.Error != "" {
+		return nil, fmt.Errorf("ollama: %s", out.Error)
 	}
 	return &Response{Text: out.Message.Content, Model: out.Model}, nil
 }
@@ -161,10 +165,14 @@ func (o *Ollama) Stream(ctx context.Context, req Request, onDelta func(string)) 
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
-			Done bool `json:"done"`
+			Done  bool   `json:"done"`
+			Error string `json:"error"`
 		}
 		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
 			continue
+		}
+		if chunk.Error != "" {
+			return nil, fmt.Errorf("ollama: %s", chunk.Error)
 		}
 		if d := chunk.Message.Content; d != "" {
 			sb.WriteString(d)

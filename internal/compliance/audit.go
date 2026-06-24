@@ -14,8 +14,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+// appendMu serializes the read-prev-hmac + append critical section so concurrent
+// Append calls in one process can't fork the chain.
+var appendMu sync.Mutex
 
 // Event is a request to record an audit entry.
 type Event struct {
@@ -95,6 +100,32 @@ func getKey() ([]byte, error) {
 	return key, nil
 }
 
+// getExistingKey reads the signing key without creating one (used by Verify, so
+// a verify can't pollute the keystore or "verify" against a fresh wrong key).
+func getExistingKey() ([]byte, bool) {
+	if env := os.Getenv("SKILLFORGE_AUDIT_KEY"); len(env) >= 32 {
+		return []byte(env), true
+	}
+	kp, err := keyPath()
+	if err != nil {
+		return nil, false
+	}
+	if b, err := os.ReadFile(kp); err == nil {
+		return b, true
+	}
+	return nil, false
+}
+
+// decodeStored decodes a log line, keeping JSON numbers exact (UseNumber) so the
+// HMAC re-marshal matches what was signed even for large integers in metadata.
+func decodeStored(line string) (storedEntry, error) {
+	dec := json.NewDecoder(strings.NewReader(line))
+	dec.UseNumber()
+	var s storedEntry
+	err := dec.Decode(&s)
+	return s, err
+}
+
 func computeHMAC(key []byte, e entry) (string, error) {
 	payload, err := json.Marshal(e)
 	if err != nil {
@@ -126,7 +157,9 @@ func lastHMAC(skillDir string) *string {
 
 // Append writes a new HMAC-chained entry to the skill's audit log.
 func Append(skillDir string, ev Event) (*AppendResult, error) {
-	if err := os.MkdirAll(auditDir(skillDir), 0o755); err != nil {
+	appendMu.Lock()
+	defer appendMu.Unlock()
+	if err := os.MkdirAll(auditDir(skillDir), 0o700); err != nil {
 		return nil, err
 	}
 	key, err := getKey()
@@ -164,19 +197,19 @@ func Append(skillDir string, ev Event) (*AppendResult, error) {
 
 // Verify walks the chain and reports the first break, if any.
 func Verify(skillDir string) (*VerifyResult, error) {
-	key, err := getKey()
-	if err != nil {
-		return nil, err
-	}
 	b, err := os.ReadFile(logPath(skillDir))
 	if err != nil {
 		return &VerifyResult{OK: true, Lines: 0, BrokenAt: -1}, nil
 	}
 	lines := nonEmptyLines(string(b))
+	key, ok := getExistingKey()
+	if !ok {
+		return &VerifyResult{OK: false, Lines: len(lines), BrokenAt: -1, Reason: "key_unavailable"}, nil
+	}
 	var prev *string
 	for i, ln := range lines {
-		var s storedEntry
-		if err := json.Unmarshal([]byte(ln), &s); err != nil {
+		s, err := decodeStored(ln)
+		if err != nil {
 			return &VerifyResult{OK: false, Lines: len(lines), BrokenAt: i, Reason: "parse_error"}, nil
 		}
 		if !ptrEq(s.PrevHMAC, prev) {
@@ -239,8 +272,8 @@ func ptrOrNil(s string) *string {
 }
 
 func clip(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
+	if r := []rune(s); len(r) > n {
+		return string(r[:n])
 	}
 	return s
 }

@@ -84,6 +84,19 @@ func TestModelRefineWiring(t *testing.T) {
 	}
 }
 
+func TestModelMultiDeltaNoPanic(t *testing.T) {
+	// Regression: a value-copied strings.Builder panicked on the 2nd delta.
+	m := newTestModel(t, nil)
+	m.busy = true
+	var tm tea.Model = m
+	for _, d := range []string{"hel", "lo ", "wor", "ld"} {
+		tm, _ = tm.Update(streamDeltaMsg{delta: d}) // would panic pre-fix
+	}
+	if got := tm.(model).pending; got != "hello world" {
+		t.Fatalf("pending = %q, want %q", got, "hello world")
+	}
+}
+
 func TestModelCancel(t *testing.T) {
 	m := newTestModel(t, nil)
 	if mm := mustUpdate(t, m, submitMsg{text: "/cancel"}); mm.result != nil || mm.degrade {
