@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/mrdulasolutions/skillforge/internal/ai"
 	"github.com/mrdulasolutions/skillforge/internal/tui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -21,8 +22,19 @@ var rootCmd = &cobra.Command{
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	Run: func(cmd *cobra.Command, _ []string) {
+		// Bare `skillforge` drops straight into the chat when interactive and a
+		// provider is configured (like running `claude`); otherwise show help.
+		if isTTY() && ai.Select() != nil {
+			if err := launchChat(tui.WizardResult{IncludeEvals: true}, ".", false); err != nil {
+				fmt.Fprintln(os.Stderr, tui.Err(err.Error()))
+				os.Exit(1)
+			}
+			return
+		}
 		fmt.Println()
 		fmt.Println(tui.Banner())
+		fmt.Println()
+		fmt.Println(tui.Info("Run " + tui.Code.Render("skillforge chat") + " to build a skill, or " + tui.Code.Render("skillforge --help") + " for all commands."))
 		fmt.Println()
 		_ = cmd.Help()
 	},
@@ -31,7 +43,7 @@ var rootCmd = &cobra.Command{
 // Execute runs the root command.
 func Execute() {
 	rootCmd.SetVersionTemplate(tui.CompactBanner() + "  v{{.Version}}\n")
-	rootCmd.AddCommand(newCmd, compileCmd, buildCmd, evalCmd, packageCmd, publishCmd, importCmd, serveMCPCmd, schemaCmd, setupCmd, doctorCmd)
+	rootCmd.AddCommand(chatCmd, newCmd, compileCmd, buildCmd, evalCmd, packageCmd, publishCmd, importCmd, serveMCPCmd, schemaCmd, setupCmd, doctorCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, tui.Err(err.Error()))

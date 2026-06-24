@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 
 	"github.com/mrdulasolutions/skillforge/internal/ai"
 	"github.com/mrdulasolutions/skillforge/internal/compliance"
@@ -16,6 +19,48 @@ func aiDrafter(p ai.Provider) forge.Drafter {
 	return func(ctx context.Context, transcript []ai.Message, prior *ai.SkillSpec, instruction string) (*ai.SkillSpec, error) {
 		return ai.DraftSkill(ctx, p, ai.DefaultModel(p), transcript, prior, instruction)
 	}
+}
+
+// runConversational launches the chat (or the offline form when no provider /
+// on degrade) and returns the result. ok=false means the user cancelled.
+func runConversational(res tui.WizardResult, outDir string) (tui.WizardResult, bool, error) {
+	p := ai.Select()
+	if p == nil {
+		fmt.Println(tui.Muted.Render("No AI provider configured — using the quick form. Run `skillforge setup` for the conversational builder."))
+		r, err := tui.RunWizard(res)
+		if err != nil {
+			return res, false, err
+		}
+		return r, true, nil
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	r, ok, err := forge.Chat(ctx, p, aiDrafter(p), res, outDir)
+	if errors.Is(err, forge.ErrDegrade) {
+		r2, ferr := tui.RunWizard(res)
+		if ferr != nil {
+			return res, false, ferr
+		}
+		return r2, true, nil
+	}
+	if err != nil {
+		return res, false, err
+	}
+	return r, ok, nil
+}
+
+// launchChat runs the conversational builder and scaffolds the confirmed skill.
+// Used by `chat`, bare `skillforge`, and the interactive path of `new`.
+func launchChat(res tui.WizardResult, outDir string, force bool) error {
+	header("chat")
+	r, ok, err := runConversational(res, outDir)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil // user cancelled — nothing written
+	}
+	return scaffoldAndReport(r, outDir, force)
 }
 
 // scaffoldAndReport slugifies the name, scaffolds the skill, initializes the

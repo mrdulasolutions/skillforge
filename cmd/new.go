@@ -1,14 +1,6 @@
 package cmd
 
 import (
-	"context"
-	"errors"
-	"fmt"
-	"os"
-	"os/signal"
-
-	"github.com/mrdulasolutions/skillforge/internal/ai"
-	"github.com/mrdulasolutions/skillforge/internal/forge"
 	"github.com/mrdulasolutions/skillforge/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -25,8 +17,8 @@ var (
 
 var newCmd = &cobra.Command{
 	Use:   "new [name]",
-	Short: "Scaffold a new skill (or plugin)",
-	Long:  "Scaffold a new portable skill (SKILL.md + structure). Builds it conversationally with AI when configured, otherwise runs a quick form. --yes is non-interactive.",
+	Short: "Scaffold a skill — AI chat builder, or a quick form / flags",
+	Long:  "Scaffold a portable skill (SKILL.md + structure). Builds it conversationally with AI when configured (same as `skillforge chat`), otherwise runs a quick form. --yes is non-interactive.",
 	Args:  cobra.MaximumNArgs(1),
 	RunE:  runNew,
 }
@@ -55,41 +47,20 @@ func runNew(_ *cobra.Command, args []string) error {
 
 	header("new")
 
-	switch {
-	case newYes || !isTTY():
+	if newYes || !isTTY() {
 		// Non-interactive: derive the name from the arg or the description.
 		if res.Name == "" {
 			res.Name = res.Description
 		}
-	default:
-		if p := ai.Select(); p != nil {
-			// Conversational, AI-driven flow.
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-			defer stop()
-			r, ok, err := forge.Chat(ctx, p, aiDrafter(p), res, newOut)
-			switch {
-			case errors.Is(err, forge.ErrDegrade):
-				r2, ferr := tui.RunWizard(res)
-				if ferr != nil {
-					return ferr
-				}
-				res = r2
-			case err != nil:
-				return err
-			case !ok:
-				return nil // user cancelled — nothing written
-			default:
-				res = r
-			}
-		} else {
-			fmt.Println(tui.Muted.Render("No AI provider configured — using the quick form. Run `skillforge setup` for the conversational builder."))
-			r, err := tui.RunWizard(res)
-			if err != nil {
-				return err
-			}
-			res = r
-		}
+		return scaffoldAndReport(res, newOut, newForce)
 	}
 
-	return scaffoldAndReport(res, newOut, newForce)
+	r, ok, err := runConversational(res, newOut)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil // cancelled
+	}
+	return scaffoldAndReport(r, newOut, newForce)
 }
