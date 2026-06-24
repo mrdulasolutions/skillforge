@@ -27,7 +27,7 @@ make build && make install
 
 ```sh
 skillforge setup                      # configure AI (stores key, verifies it works)
-skillforge new pdf-extractor          # interactive wizard (or pass -y -d "...")
+skillforge new                        # describe your skill in plain words; AI drafts it
 skillforge build pdf-extractor        # validate + best-practice warnings
 skillforge build pdf-extractor --optimize --fix   # AI-improve the description
 skillforge package pdf-extractor      # bundle → pdf-extractor.skill
@@ -39,7 +39,7 @@ skillforge doctor                     # check providers & environment
 | Command | What it does |
 |---|---|
 | `setup` | Configure an AI provider (OpenRouter or Ollama), store the key securely, and verify it with a live test call. |
-| `new <name>` | Scaffold a skill (or `--type plugin`) from embedded templates. `--compliance` adds the audit profile. |
+| `new [name]` | Build a skill conversationally — describe it in plain words and AI drafts the name, description, and SKILL.md, which you refine by chatting. Auto-derives the kebab-case name (never type it). Falls back to a quick form with no AI; `-y` for non-interactive; `--type plugin`, `--compliance`. |
 | `build [path]` | Validate `SKILL.md` (frontmatter rules + warnings). `--optimize` refines the description via AI; `--fix` applies it; `--json` for CI. |
 | `package [path]` | Validate, then zip into a `.skill` (excludes `evals/` and build artifacts). |
 | `doctor` | Report version, AI provider availability, and config writability. |

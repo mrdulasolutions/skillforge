@@ -37,6 +37,12 @@ type Provider interface {
 	Complete(ctx context.Context, req Request) (*Response, error)
 }
 
+// Streamer is an optional capability: providers that implement it stream tokens
+// via onDelta as they arrive, and still return the full accumulated Response.
+type Streamer interface {
+	Stream(ctx context.Context, req Request, onDelta func(string)) (*Response, error)
+}
+
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v

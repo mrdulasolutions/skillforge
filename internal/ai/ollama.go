@@ -1,12 +1,14 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/mrdulasolutions/skillforge/internal/config"
@@ -117,4 +119,65 @@ func (o *Ollama) Complete(ctx context.Context, req Request) (*Response, error) {
 		return nil, fmt.Errorf("ollama: decode response: %w", err)
 	}
 	return &Response{Text: out.Message.Content, Model: out.Model}, nil
+}
+
+// Stream sends a streaming chat request (NDJSON), invoking onDelta per token.
+func (o *Ollama) Stream(ctx context.Context, req Request, onDelta func(string)) (*Response, error) {
+	payload := map[string]any{
+		"model":    req.Model,
+		"messages": toOpenAIMessages(req),
+		"stream":   true,
+	}
+	if req.Temperature > 0 {
+		payload["options"] = map[string]any{"temperature": req.Temperature}
+	}
+	buf, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.Host+"/api/chat", bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := o.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("ollama: HTTP %d", resp.StatusCode)
+	}
+
+	var sb strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var chunk struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+			Done bool `json:"done"`
+		}
+		if err := json.Unmarshal([]byte(line), &chunk); err != nil {
+			continue
+		}
+		if d := chunk.Message.Content; d != "" {
+			sb.WriteString(d)
+			if onDelta != nil {
+				onDelta(d)
+			}
+		}
+		if chunk.Done {
+			break
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return &Response{Text: sb.String(), Model: req.Model}, nil
 }

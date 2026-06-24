@@ -5,16 +5,17 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/mrdulasolutions/skillforge/internal/skill"
 )
 
-// WizardResult is the data collected by the `new` wizard.
+// WizardResult is the data collected by the `new` wizard (or the conversational
+// flow). Name holds a plain title in the form path; the caller slugifies it.
 type WizardResult struct {
 	Name         string
 	Description  string
 	Type         string
 	IncludeEvals bool
 	Compliance   bool
+	BodyMarkdown string // AI-generated SKILL.md body (conversational flow only)
 }
 
 // RunWizard runs the interactive `new` form, seeded with defaults.
@@ -26,10 +27,15 @@ func RunWizard(defaults WizardResult) (WizardResult, error) {
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
-				Title("Skill name").
-				Description("kebab-case, e.g. pdf-extractor").
+				Title("What's this skill called?").
+				Description(`Plain words, e.g. "Alphabet Reciter" — we'll slug it for you.`).
 				Value(&r.Name).
-				Validate(skill.ValidateName),
+				Validate(func(s string) error {
+					if strings.TrimSpace(s) == "" {
+						return fmt.Errorf("a name is required")
+					}
+					return nil
+				}),
 			huh.NewText().
 				Title("Description").
 				Description("One line. Be specific & assertive — say when to use it.").

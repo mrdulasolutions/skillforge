@@ -1,11 +1,13 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mrdulasolutions/skillforge/internal/config"
@@ -93,6 +95,81 @@ func (o *OpenRouter) Complete(ctx context.Context, req Request) (*Response, erro
 		return nil, fmt.Errorf("openrouter: empty response")
 	}
 	return &Response{Text: out.Choices[0].Message.Content, Model: out.Model}, nil
+}
+
+// Stream sends a streaming chat-completion request, invoking onDelta per token.
+func (o *OpenRouter) Stream(ctx context.Context, req Request, onDelta func(string)) (*Response, error) {
+	if o.APIKey == "" {
+		return nil, fmt.Errorf("OPENROUTER_API_KEY is not set")
+	}
+	payload := map[string]any{
+		"model":    req.Model,
+		"messages": toOpenAIMessages(req),
+		"stream":   true,
+	}
+	if req.Temperature > 0 {
+		payload["temperature"] = req.Temperature
+	}
+	if req.MaxTokens > 0 {
+		payload["max_tokens"] = req.MaxTokens
+	}
+	buf, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.BaseURL+"/chat/completions", bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+o.APIKey)
+	httpReq.Header.Set("HTTP-Referer", "https://github.com/mrdulasolutions/skillforge")
+	httpReq.Header.Set("X-Title", "Skill Forge")
+
+	resp, err := o.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("openrouter: HTTP %d", resp.StatusCode)
+	}
+
+	var sb strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) > 0 {
+			if d := chunk.Choices[0].Delta.Content; d != "" {
+				sb.WriteString(d)
+				if onDelta != nil {
+					onDelta(d)
+				}
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return &Response{Text: sb.String(), Model: req.Model}, nil
 }
 
 // toOpenAIMessages prepends the system prompt as a system message.

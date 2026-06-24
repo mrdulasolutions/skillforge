@@ -21,6 +21,7 @@ type ScaffoldOptions struct {
 	Compliance   bool
 	OutDir       string // parent directory; defaults to "."
 	Force        bool
+	BodyOverride string // AI-generated SKILL.md body (no frontmatter, no H1); empty = template
 }
 
 // ScaffoldResult reports what was generated.
@@ -108,10 +109,17 @@ func Scaffold(opts ScaffoldOptions) (*ScaffoldResult, error) {
 		}
 	}
 
-	// SKILL.md = handwritten frontmatter (guaranteed valid) + rendered body.
-	body, err := render("skill/SKILL.body.md.tmpl", data)
-	if err != nil {
-		return nil, err
+	// SKILL.md = handwritten frontmatter (guaranteed valid) + body. The body is
+	// either the AI override (Scaffold owns the H1 + frontmatter) or the template.
+	var body string
+	if opts.BodyOverride != "" {
+		body = prepareOverrideBody(opts.BodyOverride, data.Title, opts.Compliance)
+	} else {
+		rendered, err := render("skill/SKILL.body.md.tmpl", data)
+		if err != nil {
+			return nil, err
+		}
+		body = rendered
 	}
 	skillMD := buildFrontmatter(name, desc) + "\n" + body
 	p := filepath.Join(skillDir, "SKILL.md")
@@ -219,4 +227,45 @@ func writeFile(path, content string) error {
 		return err
 	}
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+// complianceProvenanceBlock mirrors the {{if .Compliance}} section of
+// templates/skill/SKILL.body.md.tmpl — keep the two in sync.
+const complianceProvenanceBlock = "\n## Provenance & disclosure\n\n" +
+	"This skill runs under Skill Forge **compliance mode**. Sanitize untrusted\n" +
+	"inputs, record material actions to the audit log, and append the disclosure\n" +
+	"block from `references/disclosure.md` to every generated artifact. AI outputs\n" +
+	"are a starting point and must be reviewed by a qualified human before reliance.\n"
+
+// prepareOverrideBody turns an AI-generated body into a SKILL.md body: it strips
+// any frontmatter/H1 the model wrongly included, prepends Scaffold's own H1, and
+// appends the compliance block when enabled.
+func prepareOverrideBody(raw, title string, compliance bool) string {
+	body := stripLeadingH1(stripFrontmatter(raw))
+	body = "# " + title + "\n\n" + strings.TrimLeft(body, "\n")
+	body = strings.TrimRight(body, "\n")
+	if compliance {
+		return body + complianceProvenanceBlock
+	}
+	return body + "\n"
+}
+
+func stripFrontmatter(s string) string {
+	if strings.HasPrefix(s, "---\n") {
+		if _, body, reason := splitFrontmatter(s); reason == frontmatterOK {
+			return body
+		}
+	}
+	return s
+}
+
+func stripLeadingH1(s string) string {
+	t := strings.TrimLeft(s, "\n")
+	if strings.HasPrefix(t, "# ") {
+		if i := strings.IndexByte(t, '\n'); i >= 0 {
+			return strings.TrimLeft(t[i+1:], "\n")
+		}
+		return ""
+	}
+	return s
 }
