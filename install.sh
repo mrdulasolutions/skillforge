@@ -63,7 +63,7 @@ detect_platform() {
   arch=$(uname -m)
   case "$os" in
     linux|darwin) ;;
-    *) die "unsupported OS: $os (Linux and macOS are supported; use install.ps1 on Windows)" ;;
+    *) die "unsupported OS: $os — Skill Forge supports Linux and macOS" ;;
   esac
   case "$arch" in
     x86_64|amd64) arch="amd64" ;;

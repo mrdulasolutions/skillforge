@@ -101,6 +101,7 @@ func Gather(paths []string, budget int) (*Result, error) {
 		}
 		_ = filepath.WalkDir(p, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
+				res.Skipped++ // an unreadable dir/file — record it instead of silently dropping the subtree
 				return nil
 			}
 			if d.IsDir() {

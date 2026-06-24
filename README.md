@@ -15,7 +15,7 @@ Skill Forge is a tiny, fast, offline-first CLI for authoring [Agent Skills](http
 curl -fsSL https://raw.githubusercontent.com/mrdulasolutions/skillforge/main/install.sh | sh
 ```
 
-The installer detects your OS/arch, downloads the matching static binary, verifies its checksum, and puts `skillforge` on your `PATH`. No runtime dependencies. Override the install dir with `SKILLFORGE_BIN_DIR`, pin a version with `SKILLFORGE_VERSION`, or add a short alias with `SKILLFORGE_ALIAS=forge`.
+The installer (macOS and Linux) detects your OS/arch, downloads the matching static binary, **verifies its checksum (fail-closed)**, and puts `skillforge` on your `PATH`. No runtime dependencies. Override the install dir with `SKILLFORGE_BIN_DIR`, pin a version with `SKILLFORGE_VERSION`, or add a short alias with `SKILLFORGE_ALIAS=forge`.
 
 Or build from source (Go 1.25+):
 
@@ -27,7 +27,7 @@ make build && make install
 
 ```sh
 skillforge setup                      # configure AI (stores key, verifies it works)
-skillforge new                        # describe your skill in plain words; AI drafts it (chat UI)
+skillforge                            # launch the chat builder (describe a skill; AI drafts it)
 skillforge compile ./docs ./notes.md  # synthesize a skill from your files, then refine
 skillforge build pdf-extractor        # validate (+ --optimize --fix to AI-improve)
 skillforge eval pdf-extractor --baseline   # benchmark with-vs-without across providers
@@ -39,10 +39,13 @@ skillforge schema pdf-extractor       # emit MCP / OpenAI / Anthropic tool schem
 
 ## Commands
 
+Running `skillforge` with no arguments launches the chat builder (the headline experience).
+
 | Command | What it does |
 |---|---|
 | `setup` | Configure an AI provider (OpenRouter or Ollama), store the key securely, and verify it with a live test call. |
-| `new [name]` | Build a skill conversationally — a full-screen chat UI where you describe it and AI drafts the name, description, and SKILL.md, which you refine by chatting. Auto-derives the kebab-case name. Falls back to a form with no AI; `-y` non-interactive; `--type plugin`, `--compliance`. |
+| `chat` | Full-screen chat builder: describe a skill in plain words, AI drafts it, refine by chatting, say "go" to write the files. Type `/` for slash commands — `/build`, `/plugin`, `/compliance`, and `/skills`, `/export`, `/mcp` to list, package, or MCP-wire skills you've already built. Bare `skillforge` runs this. |
+| `new [name]` | Scaffold a skill. With AI configured on a TTY it opens the chat builder; otherwise (or with `-y`) it scaffolds from a form/flags. Auto-derives the kebab-case name. `--type plugin`, `--compliance`. |
 | `compile <path...>` | Read your files/folders and synthesize a skill with AI, then refine it in the chat UI (`-y` to write directly). |
 | `build [path]` | Validate `SKILL.md` (frontmatter rules + warnings). `--optimize` refines the description via AI; `--fix` applies it; `--json` for CI. |
 | `eval` / `test` `<path>` | Benchmark a skill's evals across your provider, AI-judging each expectation. `--baseline` measures lift; `--html` writes a report. |
@@ -51,6 +54,7 @@ skillforge schema pdf-extractor       # emit MCP / OpenAI / Anthropic tool schem
 | `import <file\|url>` | Install a skill from a `.skill` file or URL (zip-slip-safe). |
 | `serve-mcp [path...]` | Run an MCP server exposing skills as tools over stdio (`--execute` runs them via your provider). |
 | `schema <path>` | Emit cross-provider tool schemas (MCP, OpenAI, Anthropic) for a skill. |
+| `audit verify [path]` | Verify a compliance skill's HMAC-chained audit log; exits non-zero if the chain is broken. |
 | `doctor` | Report version, AI provider availability, and config writability. |
 
 ## AI providers
@@ -72,7 +76,7 @@ If neither is configured, AI steps degrade gracefully — every other command wo
 - **Untrusted-input sanitization** — strips zero-width / bidi / homoglyph characters and flags prompt-injection patterns.
 - **AI-disclosure & version-pinning template** in `references/disclosure.md` to append to generated artifacts.
 
-`package` verifies the audit chain and records a provenance entry.
+`package --compliance` verifies the audit chain, records a package event, and writes a provenance manifest (`<bundle>.provenance.json`) pinning the tool version and sha256 of the bundle and every packaged file. `audit verify` re-checks the chain at any time.
 
 ## Cross-provider output
 
@@ -80,7 +84,7 @@ From one skill, Skill Forge emits the same tool three ways — `skillforge schem
 
 ## Format parity
 
-Skill Forge mirrors the official `skill-creator` validation and packaging rules exactly, so anything it generates passes the reference `quick_validate.py` and loads cleanly into Claude.
+Skill Forge mirrors the official `skill-creator` validation and packaging rules, so anything it generates passes the reference `quick_validate.py` and produces byte-identical `.skill` bundles — verified in CI against the vendored official scripts. The only intentional difference: a packaged bundle additionally drops Skill Forge's own generated, machine-specific MCP artifacts (`.mcp.json`, `schemas/`) so shared bundles stay portable.
 
 ## Roadmap
 

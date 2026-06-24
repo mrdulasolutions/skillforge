@@ -65,7 +65,7 @@ func runBuild(_ *cobra.Command, args []string) error {
 		if !res.Valid() {
 			status = "invalid"
 		}
-		_, _ = compliance.Append(path, compliance.Event{
+		if _, aerr := compliance.Append(path, compliance.Event{
 			EventType: "build",
 			Tool:      "skillforge build",
 			Summary:   "validation " + status,
@@ -73,7 +73,9 @@ func runBuild(_ *cobra.Command, args []string) error {
 				"errors":   len(res.Errors()),
 				"warnings": len(res.Warnings()),
 			},
-		})
+		}); aerr != nil {
+			fmt.Println(tui.Warn("audit log not updated: " + aerr.Error()))
+		}
 	}
 
 	if !res.Valid() {

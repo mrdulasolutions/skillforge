@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 )
 
@@ -72,30 +73,35 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		case <-done:
 			return nil // EOF / client disconnected
 		case line := <-lines:
-			s.handle(ctx, line, enc)
+			if err := s.handle(ctx, line, enc); err != nil {
+				// A write failure means the client pipe is gone — stop serving
+				// rather than spin reading input we can never answer.
+				return fmt.Errorf("write response: %w", err)
+			}
 		}
 	}
 }
 
-func (s *Server) handle(ctx context.Context, line []byte, enc *json.Encoder) {
+// handle processes one request line and writes its response. It returns the
+// encoder error (broken client pipe) so Serve can stop; nil means handled.
+func (s *Server) handle(ctx context.Context, line []byte, enc *json.Encoder) error {
 	if len(bytes.TrimSpace(line)) == 0 {
-		return
+		return nil
 	}
 	var req rpcRequest
 	if err := json.Unmarshal(line, &req); err != nil {
-		_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": nil, "error": map[string]any{"code": -32700, "message": "parse error"}})
-		return
+		return enc.Encode(map[string]any{"jsonrpc": "2.0", "id": nil, "error": map[string]any{"code": -32700, "message": "parse error"}})
 	}
 	notification := len(req.ID) == 0 || string(req.ID) == "null"
 	if req.Method == "" {
-		if !notification {
-			_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(req.ID), "error": map[string]any{"code": -32600, "message": "invalid request"}})
+		if notification {
+			return nil
 		}
-		return
+		return enc.Encode(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(req.ID), "error": map[string]any{"code": -32600, "message": "invalid request"}})
 	}
 	result, rerr := s.dispatch(ctx, req)
 	if notification {
-		return
+		return nil
 	}
 	resp := map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(req.ID)}
 	if rerr != nil {
@@ -103,7 +109,7 @@ func (s *Server) handle(ctx context.Context, line []byte, enc *json.Encoder) {
 	} else {
 		resp["result"] = result
 	}
-	_ = enc.Encode(resp)
+	return enc.Encode(resp)
 }
 
 func (s *Server) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError) {

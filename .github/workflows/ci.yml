@@ -28,4 +28,42 @@ jobs:
             echo "These files need gofmt:"; echo "$unformatted"; exit 1
           fi
       - name: test
-        run: go test ./...
+        run: go test ./... -coverprofile=coverage.out -covermode=atomic
+      - name: coverage summary
+        run: go tool cover -func=coverage.out | tail -1
+
+  parity:
+    # Prove generated skills pass the official skill-creator tooling exactly.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: build skillforge
+        run: go build -o /tmp/skillforge .
+      - name: scaffold + validate + package a demo skill
+        run: |
+          work="$(mktemp -d)"
+          cd "$work"
+          /tmp/skillforge new parity-demo -y -d "Use when validating format parity in CI"
+          /tmp/skillforge build parity-demo
+          /tmp/skillforge package parity-demo
+          echo "WORK=$work" >> "$GITHUB_ENV"
+      - name: HARD GATE — official quick_validate.py must accept our skill
+        run: PYTHONPATH="$GITHUB_WORKSPACE/testdata/parity" python3 -m scripts.quick_validate "$WORK/parity-demo"
+      - name: compare packaging against official package_skill.py
+        run: |
+          PYTHONPATH="$GITHUB_WORKSPACE/testdata/parity" python3 -m scripts.package_skill "$WORK/parity-demo" "$WORK/official"
+          ours="$(unzip -Z1 "$WORK/parity-demo.skill" | sort)"
+          theirs="$(unzip -Z1 "$WORK"/official/*.skill | sort)"
+          if [ "$ours" != "$theirs" ]; then
+            echo "::error::package listing differs from official package_skill.py"
+            diff <(echo "$ours") <(echo "$theirs")
+            exit 1
+          fi
+          echo "package listings match the official tool exactly"

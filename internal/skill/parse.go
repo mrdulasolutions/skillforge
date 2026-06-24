@@ -42,7 +42,10 @@ func splitFrontmatter(content string) (frontmatter, body string, reason frontmat
 	return frontmatter, body, frontmatterOK
 }
 
-// Load reads and parses the SKILL.md in dir into a Skill. It does not validate.
+// Load reads and parses the SKILL.md in dir into a Skill. It does NOT validate:
+// a malformed or absent frontmatter block yields a Skill with empty/partial
+// fields rather than an error (only a missing file errors). Callers that need
+// correctness guarantees must run Validate(dir) — Load is for display/inspection.
 func Load(dir string) (*Skill, error) {
 	content, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
 	if err != nil {

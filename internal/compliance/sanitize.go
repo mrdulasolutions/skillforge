@@ -3,6 +3,8 @@ package compliance
 import (
 	"regexp"
 	"strings"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // SanitizeResult reports the cleaned string and any flags raised.
@@ -61,6 +63,14 @@ func Sanitize(input, field string) SanitizeResult {
 	cleaned = reZeroWidth.ReplaceAllString(cleaned, "")
 	cleaned = reBidi.ReplaceAllString(cleaned, "")
 	cleaned = reControl.ReplaceAllString(cleaned, "")
+
+	// NFKC folds compatibility look-alikes (fullwidth Latin, ligatures, circled
+	// digits) that the homoglyph map below doesn't cover. Cyrillic/Greek spoofs
+	// are a different script and survive NFKC, so both passes are needed.
+	if n := norm.NFKC.String(cleaned); n != cleaned {
+		flags = append(flags, "nfkc_normalized")
+		cleaned = n
+	}
 
 	homoHit := false
 	var b strings.Builder

@@ -43,7 +43,7 @@ var rootCmd = &cobra.Command{
 // Execute runs the root command.
 func Execute() {
 	rootCmd.SetVersionTemplate(tui.CompactBanner() + "  v{{.Version}}\n")
-	rootCmd.AddCommand(chatCmd, newCmd, compileCmd, buildCmd, evalCmd, packageCmd, publishCmd, importCmd, serveMCPCmd, schemaCmd, setupCmd, doctorCmd)
+	rootCmd.AddCommand(chatCmd, newCmd, compileCmd, buildCmd, evalCmd, packageCmd, publishCmd, importCmd, serveMCPCmd, schemaCmd, auditCmd, setupCmd, doctorCmd)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr)
 		fmt.Fprintln(os.Stderr, tui.Err(err.Error()))

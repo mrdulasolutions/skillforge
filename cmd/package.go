@@ -10,7 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var packageOut string
+var (
+	packageOut        string
+	packageCompliance bool
+)
 
 var packageCmd = &cobra.Command{
 	Use:   "package [path]",
@@ -22,6 +25,7 @@ var packageCmd = &cobra.Command{
 
 func init() {
 	packageCmd.Flags().StringVarP(&packageOut, "out", "o", "", "output directory (default: current dir)")
+	packageCmd.Flags().BoolVar(&packageCompliance, "compliance", false, "seal the audit log and write a provenance manifest")
 }
 
 func runPackage(_ *cobra.Command, args []string) error {
@@ -49,12 +53,14 @@ func runPackage(_ *cobra.Command, args []string) error {
 		{"skipped", fmt.Sprintf("%d (evals/build artifacts)", len(pr.Skipped))},
 	}))
 
-	if compliance.HasLog(path) {
-		_, _ = compliance.Append(path, compliance.Event{
+	if packageCompliance || compliance.HasLog(path) {
+		if _, aerr := compliance.Append(path, compliance.Event{
 			EventType: "package",
 			Tool:      "skillforge package",
 			Summary:   "packaged to " + pr.Output,
-		})
+		}); aerr != nil {
+			fmt.Println(tui.Warn("audit log not updated: " + aerr.Error()))
+		}
 		if v, verr := compliance.Verify(path); verr == nil {
 			fmt.Println()
 			if v.OK {
@@ -62,6 +68,11 @@ func runPackage(_ *cobra.Command, args []string) error {
 			} else {
 				fmt.Println(tui.Err(fmt.Sprintf("audit chain broken at entry %d (%s)", v.BrokenAt, v.Reason)))
 			}
+		}
+		if mpath, merr := writeProvenance(path, pr); merr != nil {
+			fmt.Println(tui.Warn("provenance manifest not written: " + merr.Error()))
+		} else {
+			fmt.Println(tui.OK("provenance manifest " + tui.Code.Render(mpath)))
 		}
 	}
 	return nil
