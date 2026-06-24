@@ -94,7 +94,8 @@ func Gather(paths []string, budget int) (*Result, error) {
 				return nil
 			}
 			if d.IsDir() {
-				if skipDirs[d.Name()] || (strings.HasPrefix(d.Name(), ".") && path != p) {
+				// Skip vendor/hidden dirs, but never the explicitly requested root.
+				if path != p && (skipDirs[d.Name()] || strings.HasPrefix(d.Name(), ".")) {
 					return fs.SkipDir
 				}
 				return nil

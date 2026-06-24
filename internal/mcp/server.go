@@ -4,6 +4,7 @@ package mcp
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -43,28 +44,55 @@ type rpcError struct {
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	r := bufio.NewReader(in)
 	enc := json.NewEncoder(out)
+
+	// Read on a goroutine so a blocked ReadBytes can't swallow ctx cancellation.
+	lines := make(chan []byte)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			line, err := r.ReadBytes('\n')
+			if len(line) > 0 {
+				select {
+				case lines <- line:
+				case <-ctx.Done():
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		default:
-		}
-		line, err := r.ReadBytes('\n')
-		if len(line) > 0 {
+		case <-done:
+			return nil // EOF / client disconnected
+		case line := <-lines:
 			s.handle(ctx, line, enc)
-		}
-		if err != nil {
-			return nil // EOF or read error: client disconnected
 		}
 	}
 }
 
 func (s *Server) handle(ctx context.Context, line []byte, enc *json.Encoder) {
+	if len(bytes.TrimSpace(line)) == 0 {
+		return
+	}
 	var req rpcRequest
-	if err := json.Unmarshal(line, &req); err != nil || req.Method == "" {
+	if err := json.Unmarshal(line, &req); err != nil {
+		_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": nil, "error": map[string]any{"code": -32700, "message": "parse error"}})
 		return
 	}
 	notification := len(req.ID) == 0 || string(req.ID) == "null"
+	if req.Method == "" {
+		if !notification {
+			_ = enc.Encode(map[string]any{"jsonrpc": "2.0", "id": json.RawMessage(req.ID), "error": map[string]any{"code": -32600, "message": "invalid request"}})
+		}
+		return
+	}
 	result, rerr := s.dispatch(ctx, req)
 	if notification {
 		return

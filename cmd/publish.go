@@ -50,7 +50,10 @@ func runPublish(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	info, _ := os.Stat(pr.Output)
+	info, err := os.Stat(pr.Output)
+	if err != nil {
+		return err
+	}
 
 	manifest := map[string]any{
 		"file":   filepath.Base(pr.Output),

@@ -31,6 +31,20 @@ func TestGather(t *testing.T) {
 	}
 }
 
+func TestGatherExplicitSkipDir(t *testing.T) {
+	// Pointing compile directly at a normally-skipped dir must still read it.
+	dir := t.TempDir()
+	vendor := filepath.Join(dir, "vendor")
+	write(t, filepath.Join(vendor, "lib.md"), "vendor docs here")
+	res, err := Gather([]string{vendor}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Sources) != 1 || !strings.Contains(res.Corpus, "vendor docs here") {
+		t.Fatalf("explicit skip-dir root should be ingested: %+v", res)
+	}
+}
+
 func TestGatherBudget(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "big.txt"), strings.Repeat("x", 5000))

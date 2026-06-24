@@ -314,28 +314,31 @@ func (m model) startInterview() (tea.Model, tea.Cmd) {
 
 func streamCmd(ctx context.Context, p ai.Provider, req ai.Request, ch chan deltaEv) tea.Cmd {
 	return func() tea.Msg {
+		// emit never blocks past cancellation, so the producer always unblocks
+		// (and the provider's HTTP body gets drained) when the user quits.
+		emit := func(ev deltaEv) {
+			select {
+			case ch <- ev:
+			case <-ctx.Done():
+			}
+		}
 		s, ok := p.(ai.Streamer)
 		if !ok {
 			resp, err := p.Complete(ctx, req)
 			if err != nil {
-				ch <- deltaEv{done: true, err: err}
+				emit(deltaEv{done: true, err: err})
 			} else {
-				ch <- deltaEv{s: resp.Text}
-				ch <- deltaEv{done: true, s: resp.Text}
+				emit(deltaEv{s: resp.Text})
+				emit(deltaEv{done: true, s: resp.Text})
 			}
 			return nil
 		}
-		resp, err := s.Stream(ctx, req, func(d string) {
-			select {
-			case ch <- deltaEv{s: d}:
-			case <-ctx.Done():
-			}
-		})
+		resp, err := s.Stream(ctx, req, func(d string) { emit(deltaEv{s: d}) })
 		if err != nil {
-			ch <- deltaEv{done: true, err: err}
+			emit(deltaEv{done: true, err: err})
 			return nil
 		}
-		ch <- deltaEv{done: true, s: resp.Text}
+		emit(deltaEv{done: true, s: resp.Text})
 		return nil
 	}
 }

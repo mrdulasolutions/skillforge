@@ -52,3 +52,23 @@ func TestServe(t *testing.T) {
 		t.Fatalf("expected 4 responses, got %d:\n%s", n, s)
 	}
 }
+
+func TestServeErrors(t *testing.T) {
+	srv := &Server{Name: "t", Version: "1"}
+	in := strings.NewReader(strings.Join([]string{
+		`{"jsonrpc":"2.0","id":7}`,                  // request with id, no method -> -32600
+		`not json at all`,                           // parse error -> -32700
+		`{"jsonrpc":"2.0","method":"x"}`,            // notification, no id -> no response
+		`{"jsonrpc":"2.0","id":8,"method":"bogus"}`, // unknown method -> -32601
+	}, "\n") + "\n")
+	var out bytes.Buffer
+	if err := srv.Serve(context.Background(), in, &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	for _, want := range []string{"-32600", "-32700", "-32601"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("missing %s in:\n%s", want, s)
+		}
+	}
+}

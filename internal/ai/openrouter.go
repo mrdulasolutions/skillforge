@@ -72,6 +72,14 @@ func (o *OpenRouter) Complete(ctx context.Context, req Request) (*Response, erro
 		return nil, err
 	}
 	defer resp.Body.Close()
+	// Check status before decoding so a non-JSON error body can't mask the
+	// 401/429 handling (mirrors Stream).
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("OpenRouter rejected the API key (401) — verify it at https://openrouter.ai/keys")
+	}
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return nil, fmt.Errorf("openrouter: rate-limited (429) — that model is busy or your key hit a limit; try another model or wait")
+	}
 	var out struct {
 		Choices []struct {
 			Message struct {
@@ -84,15 +92,12 @@ func (o *OpenRouter) Complete(ctx context.Context, req Request) (*Response, erro
 		} `json:"error"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		if resp.StatusCode >= 400 {
+			return nil, fmt.Errorf("openrouter: HTTP %d", resp.StatusCode)
+		}
 		return nil, fmt.Errorf("openrouter: decode response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		if resp.StatusCode == http.StatusUnauthorized {
-			return nil, fmt.Errorf("OpenRouter rejected the API key (401) — verify it at https://openrouter.ai/keys")
-		}
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return nil, fmt.Errorf("openrouter: rate-limited (429) — that model is busy or your key hit a limit; try another model or wait")
-		}
 		if out.Error != nil {
 			return nil, fmt.Errorf("openrouter: %s (HTTP %d)", out.Error.Message, resp.StatusCode)
 		}

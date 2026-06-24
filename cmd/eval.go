@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"time"
 
 	"github.com/mrdulasolutions/skillforge/internal/ai"
 	"github.com/mrdulasolutions/skillforge/internal/eval"
@@ -69,12 +68,11 @@ func runEval(_ *cobra.Command, args []string) error {
 	header("eval")
 	fmt.Println(tui.Info(fmt.Sprintf("running %d eval(s) on %s · %s%s", len(f.Evals), p.Name(), model, baselineNote())))
 
+	// Per-call client timeouts bound each request; SIGINT cancels the run.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	cctx, cancel := context.WithTimeout(ctx, time.Duration(len(f.Evals))*120*time.Second+60*time.Second)
-	defer cancel()
 
-	rep, err := eval.Run(cctx, p, model, s.Body, f, evalBaseline, func(done, total int) {
+	rep, err := eval.Run(ctx, p, model, s.Body, f, evalBaseline, func(done, total int) {
 		fmt.Println(tui.Muted.Render(fmt.Sprintf("  ✓ case %d/%d", done, total)))
 	})
 	if err != nil {
