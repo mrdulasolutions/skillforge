@@ -24,10 +24,10 @@ type OpenRouter struct {
 // NewOpenRouter builds a client. The API key comes from OPENROUTER_API_KEY, or
 // the stored secret (keychain/file) written by `skillforge setup`.
 func NewOpenRouter() *OpenRouter {
-	key := envOr("OPENROUTER_API_KEY", "")
+	key := strings.TrimSpace(envOr("OPENROUTER_API_KEY", ""))
 	if key == "" {
 		if k, err := config.GetSecret(config.SecretOpenRouterKey); err == nil {
-			key = k
+			key = strings.TrimSpace(k)
 		}
 	}
 	return &OpenRouter{
@@ -87,6 +87,9 @@ func (o *OpenRouter) Complete(ctx context.Context, req Request) (*Response, erro
 		return nil, fmt.Errorf("openrouter: decode response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return nil, fmt.Errorf("OpenRouter rejected the API key (401) — verify it at https://openrouter.ai/keys")
+		}
 		if out.Error != nil {
 			return nil, fmt.Errorf("openrouter: %s (HTTP %d)", out.Error.Message, resp.StatusCode)
 		}
@@ -132,6 +135,9 @@ func (o *OpenRouter) Stream(ctx context.Context, req Request, onDelta func(strin
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, fmt.Errorf("OpenRouter rejected the API key (401) — verify it at https://openrouter.ai/keys")
+	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("openrouter: HTTP %d", resp.StatusCode)
 	}

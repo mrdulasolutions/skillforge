@@ -59,6 +59,7 @@ func runSetup(_ *cobra.Command, _ []string) error {
 
 func setupOpenRouter(cfg *config.Config) error {
 	existing, _ := config.GetSecret(config.SecretOpenRouterKey)
+	existing = strings.TrimSpace(existing)
 	key := ""
 	keyDesc := "Get one at https://openrouter.ai/keys"
 	if existing != "" {
@@ -71,7 +72,7 @@ func setupOpenRouter(cfg *config.Config) error {
 		EchoMode(huh.EchoModePassword).
 		Value(&key).
 		Validate(func(s string) error {
-			if s == "" && existing == "" {
+			if strings.TrimSpace(s) == "" && existing == "" {
 				return fmt.Errorf("a key is required")
 			}
 			return nil
@@ -80,6 +81,7 @@ func setupOpenRouter(cfg *config.Config) error {
 		Run(); err != nil {
 		return err
 	}
+	key = strings.TrimSpace(key)
 	if key == "" {
 		key = existing
 	}
