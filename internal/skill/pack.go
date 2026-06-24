@@ -10,11 +10,13 @@ import (
 	"strings"
 )
 
-// Exclusion rules ported from package_skill.py.
+// Exclusion rules ported from package_skill.py, plus Skill Forge's own
+// machine-specific generated artifacts (the `/mcp` command's client config and
+// cross-provider schemas), which must not travel in a portable bundle.
 var (
 	excludeDirs     = map[string]bool{"__pycache__": true, "node_modules": true}
-	rootExcludeDirs = map[string]bool{"evals": true}
-	excludeFiles    = map[string]bool{".DS_Store": true}
+	rootExcludeDirs = map[string]bool{"evals": true, "schemas": true}
+	excludeFiles    = map[string]bool{".DS_Store": true, ".mcp.json": true}
 )
 
 // PackResult reports what a packaging run produced.

@@ -131,6 +131,9 @@ var slashCmds = []slashCmd{
 	{"/new", "start over with a fresh conversation"},
 	{"/plugin", "package this as a plugin instead of a skill"},
 	{"/compliance", "toggle the compliance profile (audit + disclosure)"},
+	{"/skills", "list the skills you've already built"},
+	{"/export", "package a built skill into a portable .skill bundle"},
+	{"/mcp", "set up a built skill as an MCP server (config + schemas)"},
 	{"/help", "list the slash commands"},
 	{"/cancel", "quit without writing anything"},
 }
@@ -206,7 +209,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.ta.Reset()
 				m.growInput()
 				m.updateMenu()
-				return m.runSlash(name)
+				return m.runSlash(name, "")
 			}
 			line := strings.TrimSpace(m.ta.Value())
 			if line == "" {
@@ -317,6 +320,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) handleSubmit(line string) (tea.Model, tea.Cmd) {
+	if strings.HasPrefix(line, "/") { // a slash command typed with an argument
+		name, arg := splitSlash(line)
+		return m.runSlash(name, arg)
+	}
 	if isCancel(line) {
 		return m, tea.Quit
 	}
@@ -675,8 +682,9 @@ func (m *model) updateMenu() {
 	}
 }
 
-// runSlash executes a slash command and clears the palette.
-func (m model) runSlash(name string) (tea.Model, tea.Cmd) {
+// runSlash executes a slash command (with an optional argument) and clears the
+// palette. arg is empty when the command is run from the palette.
+func (m model) runSlash(name, arg string) (tea.Model, tea.Cmd) {
 	m.menu = nil
 	switch name {
 	case "/cancel", "/quit", "/exit", "/q":
@@ -700,15 +708,21 @@ func (m model) runSlash(name string) (tea.Model, tea.Cmd) {
 			state = "on"
 		}
 		m.msgs = append(m.msgs, chatMsg{roleSystem, "compliance profile " + state})
-	case "/build", "/go", "/draft", "/make":
+	case "/build", "/create", "/go", "/draft", "/make":
 		if m.phase == phaseReview {
 			res := finalize(m.spec, m.seed)
 			m.result = &res
 			return m, tea.Quit
 		}
 		return m.startDraft(nil, "")
+	case "/skills":
+		m.msgs = append(m.msgs, m.skillsResult()...)
+	case "/export":
+		m.msgs = append(m.msgs, m.exportResult(arg)...)
+	case "/mcp":
+		m.msgs = append(m.msgs, m.mcpResult(arg)...)
 	default:
-		m.msgs = append(m.msgs, chatMsg{roleSystem, "unknown command: " + name})
+		m.msgs = append(m.msgs, chatMsg{roleSystem, "unknown command: " + name + " — try /help"})
 	}
 	m.follow = true
 	m.refreshViewport()

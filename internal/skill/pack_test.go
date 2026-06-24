@@ -27,6 +27,9 @@ func TestScaffoldThenPackage(t *testing.T) {
 	// Add artifacts that must be excluded from the package.
 	mustWrite(t, filepath.Join(res.SkillDir, ".DS_Store"), "junk")
 	mustWrite(t, filepath.Join(res.SkillDir, "node_modules", "pkg", "index.js"), "x")
+	// Machine-specific MCP artifacts the /mcp command writes — must not travel.
+	mustWrite(t, filepath.Join(res.SkillDir, ".mcp.json"), `{"mcpServers":{}}`)
+	mustWrite(t, filepath.Join(res.SkillDir, "schemas", "demo-skill.mcp.json"), "{}")
 
 	pr, err := Package(res.SkillDir, parent)
 	if err != nil {
@@ -50,6 +53,8 @@ func TestScaffoldThenPackage(t *testing.T) {
 		"demo-skill/evals/evals.json",
 		"demo-skill/.DS_Store",
 		"demo-skill/node_modules/pkg/index.js",
+		"demo-skill/.mcp.json",
+		"demo-skill/schemas/demo-skill.mcp.json",
 	} {
 		if got[excluded] {
 			t.Errorf("expected %q to be excluded from archive", excluded)

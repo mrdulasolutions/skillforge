@@ -129,19 +129,19 @@ func TestSlashMenuFilter(t *testing.T) {
 }
 
 func TestSlashRunActions(t *testing.T) {
-	if nm, _ := newTestModel(t, nil).runSlash("/plugin"); nm.(model).seed.Type != "plugin" {
+	if nm, _ := newTestModel(t, nil).runSlash("/plugin", ""); nm.(model).seed.Type != "plugin" {
 		t.Error("/plugin should set type=plugin")
 	}
-	if nm, _ := newTestModel(t, nil).runSlash("/compliance"); !nm.(model).seed.Compliance {
+	if nm, _ := newTestModel(t, nil).runSlash("/compliance", ""); !nm.(model).seed.Compliance {
 		t.Error("/compliance should enable compliance")
 	}
-	if nm, _ := newTestModel(t, nil).runSlash("/cancel"); nm.(model).result != nil {
+	if nm, _ := newTestModel(t, nil).runSlash("/cancel", ""); nm.(model).result != nil {
 		t.Error("/cancel must not set a result")
 	}
 	m := newTestModel(t, nil)
 	m.transcript = []ai.Message{{Role: "user", Content: "x"}}
 	m.phase = phaseReview
-	if nm, _ := m.runSlash("/new"); len(nm.(model).transcript) != 0 || nm.(model).phase != phaseInterview {
+	if nm, _ := m.runSlash("/new", ""); len(nm.(model).transcript) != 0 || nm.(model).phase != phaseInterview {
 		t.Error("/new should reset the conversation")
 	}
 }
