@@ -209,6 +209,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			reply = m.pending.String()
 		}
 		m.pending.Reset()
+		if strings.TrimSpace(reply) == "" {
+			// Some free / reasoning models return empty content (the budget goes
+			// to hidden reasoning). Don't show a blank turn or advance to ready.
+			m.msgs = append(m.msgs, chatMsg{roleSystem,
+				"the model returned an empty reply — some free or reasoning models do this. Try again, rephrase, or run `skillforge setup` and pick a different model."})
+			m.ta.Focus()
+			m.refreshViewport()
+			return m, textarea.Blink
+		}
 		m.msgs = append(m.msgs, chatMsg{roleAssistant, reply})
 		m.transcript = append(m.transcript, ai.Message{Role: "assistant", Content: reply})
 		if strings.Contains(reply, "?") {

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/lipgloss"
@@ -144,13 +145,26 @@ func FileTree(paths []string) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// RenderMarkdown pretty-prints markdown for terminal preview (best-effort).
+var (
+	mdOnce     sync.Once
+	mdRenderer *glamour.TermRenderer
+)
+
+// RenderMarkdown pretty-prints markdown for the terminal. It uses a fixed dark
+// style (NOT WithAutoStyle, which queries the terminal for its background — that
+// query's reply leaks into stdin and corrupts the Bubble Tea chat input) and
+// caches the renderer so it isn't rebuilt on every frame.
 func RenderMarkdown(md string) string {
-	r, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(82))
-	if err != nil {
+	mdOnce.Do(func() {
+		mdRenderer, _ = glamour.NewTermRenderer(
+			glamour.WithStandardStyle("dark"),
+			glamour.WithWordWrap(82),
+		)
+	})
+	if mdRenderer == nil {
 		return md
 	}
-	out, err := r.Render(md)
+	out, err := mdRenderer.Render(md)
 	if err != nil {
 		return md
 	}
