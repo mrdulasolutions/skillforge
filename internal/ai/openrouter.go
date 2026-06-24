@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -182,4 +183,38 @@ func toOpenAIMessages(req Request) []map[string]string {
 		msgs = append(msgs, map[string]string{"role": m.Role, "content": m.Content})
 	}
 	return msgs
+}
+
+// ORModel is a model offered by OpenRouter.
+type ORModel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListModels fetches the OpenRouter model catalog, sorted by id. The /models
+// endpoint is public; the key is sent when available.
+func (o *OpenRouter) ListModels(ctx context.Context) ([]ORModel, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.BaseURL+"/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	if o.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+o.APIKey)
+	}
+	resp, err := o.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("openrouter: HTTP %d", resp.StatusCode)
+	}
+	var out struct {
+		Data []ORModel `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	sort.Slice(out.Data, func(i, j int) bool { return out.Data[i].ID < out.Data[j].ID })
+	return out.Data, nil
 }

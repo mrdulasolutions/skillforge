@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -59,36 +60,36 @@ func runSetup(_ *cobra.Command, _ []string) error {
 func setupOpenRouter(cfg *config.Config) error {
 	existing, _ := config.GetSecret(config.SecretOpenRouterKey)
 	key := ""
-	model := cfg.OpenRouterModel
-	if model == "" {
-		model = "anthropic/claude-3.5-sonnet"
-	}
 	keyDesc := "Get one at https://openrouter.ai/keys"
 	if existing != "" {
 		keyDesc = "Leave blank to keep the saved key"
 	}
 
-	if err := huh.NewForm(huh.NewGroup(
-		huh.NewInput().
-			Title("OpenRouter API key").
-			Description(keyDesc).
-			EchoMode(huh.EchoModePassword).
-			Value(&key).
-			Validate(func(s string) error {
-				if s == "" && existing == "" {
-					return fmt.Errorf("a key is required")
-				}
-				return nil
-			}),
-		huh.NewInput().
-			Title("Default model").
-			Description("e.g. anthropic/claude-3.5-sonnet, openai/gpt-4o-mini").
-			Value(&model),
-	)).WithTheme(tui.FormTheme()).Run(); err != nil {
+	if err := huh.NewInput().
+		Title("OpenRouter API key").
+		Description(keyDesc).
+		EchoMode(huh.EchoModePassword).
+		Value(&key).
+		Validate(func(s string) error {
+			if s == "" && existing == "" {
+				return fmt.Errorf("a key is required")
+			}
+			return nil
+		}).
+		WithTheme(tui.FormTheme()).
+		Run(); err != nil {
 		return err
 	}
 	if key == "" {
 		key = existing
+	}
+
+	or := ai.NewOpenRouter()
+	or.APIKey = key
+
+	model, err := chooseOpenRouterModel(cfg, or)
+	if err != nil {
+		return err
 	}
 
 	storage, err := config.SetSecret(config.SecretOpenRouterKey, key)
@@ -96,10 +97,7 @@ func setupOpenRouter(cfg *config.Config) error {
 		return fmt.Errorf("storing key: %w", err)
 	}
 
-	or := ai.NewOpenRouter()
-	or.APIKey = key
 	reply, verr := runVerify("OpenRouter", or, model, 30*time.Second)
-
 	cfg.Provider = "openrouter"
 	cfg.OpenRouterModel = model
 	if err := cfg.Save(); err != nil {
@@ -107,6 +105,60 @@ func setupOpenRouter(cfg *config.Config) error {
 	}
 	reportSetup(storage, reply, verr)
 	return nil
+}
+
+// chooseOpenRouterModel loads the catalog and shows a type-to-filter picker,
+// falling back to free text if the list can't be loaded.
+func chooseOpenRouterModel(cfg *config.Config, or *ai.OpenRouter) (string, error) {
+	defaultModel := cfg.OpenRouterModel
+	if defaultModel == "" {
+		defaultModel = "anthropic/claude-3.5-sonnet"
+	}
+
+	var models []ai.ORModel
+	var ferr error
+	_ = spinner.New().
+		Title(" loading OpenRouter models…").
+		Action(func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			models, ferr = or.ListModels(ctx)
+		}).
+		Run()
+
+	if ferr != nil || len(models) == 0 {
+		fmt.Println(tui.Warn("couldn't load the model list — enter a model id manually"))
+		model := defaultModel
+		err := huh.NewInput().
+			Title("Default model").
+			Description("e.g. anthropic/claude-3.5-sonnet, openai/gpt-4o-mini").
+			Value(&model).
+			WithTheme(tui.FormTheme()).
+			Run()
+		return strings.TrimSpace(model), err
+	}
+
+	opts := make([]huh.Option[string], 0, len(models))
+	hasDefault := false
+	for _, m := range models {
+		opts = append(opts, huh.NewOption(m.ID, m.ID))
+		if m.ID == defaultModel {
+			hasDefault = true
+		}
+	}
+	model := defaultModel
+	if !hasDefault {
+		model = models[0].ID
+	}
+	err := huh.NewSelect[string]().
+		Title(fmt.Sprintf("Default model — %d available, type to filter", len(models))).
+		Options(opts...).
+		Filtering(true).
+		Height(12).
+		Value(&model).
+		WithTheme(tui.FormTheme()).
+		Run()
+	return model, err
 }
 
 func setupOllama(cfg *config.Config) error {
