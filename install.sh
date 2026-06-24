@@ -9,6 +9,7 @@
 #   SKILLFORGE_ALIAS     also create this alias symlink (e.g. "skill" or "forge")
 #   SKILLFORGE_LOCAL_BIN install this local binary instead of downloading (testing)
 #   SKILLFORGE_DRY_RUN   print actions without installing
+#   SKILLFORGE_SKIP_CHECKSUM  bypass checksum verification (not recommended)
 #   NO_COLOR             disable color
 
 set -eu
@@ -165,15 +166,25 @@ main() {
     fi
     step "downloading ${asset}"
     download "$url" "$tmp/$asset" || die "download failed: $url"
-    # Optional checksum verification (sha256sum on Linux, shasum on macOS).
-    if download "${base}/checksums.txt" "$tmp/checksums.txt" 2>/dev/null; then
+    # Checksum verification — fail closed: a mismatch, a missing checksums file,
+    # or an asset absent from it aborts the install (bypass: SKILLFORGE_SKIP_CHECKSUM=1).
+    if [ "${SKILLFORGE_SKIP_CHECKSUM:-}" = "1" ]; then
+      warn "checksum verification skipped (SKILLFORGE_SKIP_CHECKSUM=1)"
+    elif download "${base}/checksums.txt" "$tmp/checksums.txt" 2>/dev/null; then
       sumcmd=""
       if have sha256sum; then sumcmd="sha256sum -c -"
       elif have shasum; then sumcmd="shasum -a 256 -c -"; fi
-      if [ -n "$sumcmd" ]; then
-        (cd "$tmp" && grep " $asset\$" checksums.txt | $sumcmd >/dev/null 2>&1) \
-          && ok "checksum verified" || warn "checksum not verified"
+      if [ -z "$sumcmd" ]; then
+        warn "no sha256 tool found — cannot verify checksum (set SKILLFORGE_SKIP_CHECKSUM=1 to silence)"
+      elif ! grep -q " $asset\$" "$tmp/checksums.txt"; then
+        die "checksum for $asset not found in checksums.txt — refusing to install"
+      elif (cd "$tmp" && grep " $asset\$" checksums.txt | $sumcmd >/dev/null 2>&1); then
+        ok "checksum verified"
+      else
+        die "checksum mismatch for $asset — the download may be corrupted or tampered with; refusing to install"
       fi
+    else
+      die "could not download checksums.txt to verify the download (set SKILLFORGE_SKIP_CHECKSUM=1 to bypass)"
     fi
     tar -xzf "$tmp/$asset" -C "$tmp" || die "extract failed"
     install_binary "$tmp/$BIN"
