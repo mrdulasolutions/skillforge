@@ -165,10 +165,13 @@ main() {
     fi
     step "downloading ${asset}"
     download "$url" "$tmp/$asset" || die "download failed: $url"
-    # Optional checksum verification.
+    # Optional checksum verification (sha256sum on Linux, shasum on macOS).
     if download "${base}/checksums.txt" "$tmp/checksums.txt" 2>/dev/null; then
-      if have sha256sum; then
-        (cd "$tmp" && grep " $asset\$" checksums.txt | sha256sum -c - >/dev/null 2>&1) \
+      sumcmd=""
+      if have sha256sum; then sumcmd="sha256sum -c -"
+      elif have shasum; then sumcmd="shasum -a 256 -c -"; fi
+      if [ -n "$sumcmd" ]; then
+        (cd "$tmp" && grep " $asset\$" checksums.txt | $sumcmd >/dev/null 2>&1) \
           && ok "checksum verified" || warn "checksum not verified"
       fi
     fi
